@@ -2,7 +2,7 @@
 // CONFIGURACIÓN INICIAL
 // ============================================
 const DB_NAME = 'PresupuestoDB';
-const DB_VERSION = 3; // ← Cambié a versión 3 para agregar store de subcategorías
+const DB_VERSION = 5; // ← Nueva versión
 let db = null;
 
 const CATEGORIAS = {
@@ -30,39 +30,49 @@ function abrirDB() {
         request.onupgradeneeded = (event) => {
             const db = event.target.result;
             
-            // Store: Presupuesto
+            // --- Stores existentes ---
             if (!db.objectStoreNames.contains('presupuesto')) {
                 const store = db.createObjectStore('presupuesto', { keyPath: 'id', autoIncrement: true });
                 store.createIndex('categoria', 'categoria', { unique: false });
                 store.createIndex('subcategoria', 'subcategoria', { unique: false });
             }
             
-            // Store: Transacciones
             if (!db.objectStoreNames.contains('transacciones')) {
                 const store = db.createObjectStore('transacciones', { keyPath: 'id', autoIncrement: true });
                 store.createIndex('mes', 'mes', { unique: false });
                 store.createIndex('anio', 'anio', { unique: false });
                 store.createIndex('categoria', 'categoria', { unique: false });
                 store.createIndex('subcategoria', 'subcategoria', { unique: false });
+                store.createIndex('tarjetaId', 'tarjetaId', { unique: false });
             }
             
-            // Store: Patrimonio
             if (!db.objectStoreNames.contains('patrimonio')) {
                 const store = db.createObjectStore('patrimonio', { keyPath: 'id', autoIncrement: true });
                 store.createIndex('mes', 'mes', { unique: false });
                 store.createIndex('tipo', 'tipo', { unique: false });
             }
             
-            // Store: Configuración
             if (!db.objectStoreNames.contains('configuracion')) {
                 db.createObjectStore('configuracion', { keyPath: 'key' });
             }
 
-            // ============ NUEVO: Store para subcategorías ============
             if (!db.objectStoreNames.contains('subcategorias')) {
                 const store = db.createObjectStore('subcategorias', { keyPath: 'id', autoIncrement: true });
                 store.createIndex('categoria', 'categoria', { unique: false });
                 store.createIndex('nombre', 'nombre', { unique: false });
+            }
+
+            // ============ NUEVO: TARJETAS DE CRÉDITO ============
+            if (!db.objectStoreNames.contains('tarjetas')) {
+                const store = db.createObjectStore('tarjetas', { keyPath: 'id', autoIncrement: true });
+                store.createIndex('nombre', 'nombre', { unique: false });
+            }
+
+            // ============ NUEVO: GASTOS FIJOS ============
+            if (!db.objectStoreNames.contains('gastosFijos')) {
+                const store = db.createObjectStore('gastosFijos', { keyPath: 'id', autoIncrement: true });
+                store.createIndex('categoria', 'categoria', { unique: false });
+                store.createIndex('frecuencia', 'frecuencia', { unique: false });
             }
         };
     });
@@ -92,36 +102,28 @@ async function obtenerConfiguracion(key) {
 }
 
 // ============================================
-// FUNCIONES CRUD (Presupuesto)
+// ============ TARJETAS DE CRÉDITO ============
 // ============================================
-async function guardarPresupuesto(categoria, subcategoria, monto) {
-    const tx = db.transaction('presupuesto', 'readwrite');
-    const store = tx.objectStore('presupuesto');
-    const index = store.index('subcategoria');
+
+// Guardar o actualizar una tarjeta
+async function guardarTarjeta({ id, nombre, diaCorte, diaPago, deudaActual = 0 }) {
+    const tx = db.transaction('tarjetas', 'readwrite');
+    const store = tx.objectStore('tarjetas');
+    
+    const data = { nombre, diaCorte, diaPago, deudaActual };
+    if (id) data.id = id;
     
     return new Promise((resolve, reject) => {
-        const req = index.get(subcategoria);
-        req.onsuccess = () => {
-            const existing = req.result;
-            if (existing) {
-                existing.monto = monto;
-                const updateReq = store.put(existing);
-                updateReq.onsuccess = () => resolve(updateReq.result);
-                updateReq.onerror = () => reject(updateReq.error);
-            } else {
-                const newItem = { categoria, subcategoria, monto };
-                const addReq = store.add(newItem);
-                addReq.onsuccess = () => resolve(addReq.result);
-                addReq.onerror = () => reject(addReq.error);
-            }
-        };
+        const req = id ? store.put(data) : store.add(data);
+        req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
     });
 }
 
-async function obtenerPresupuesto() {
-    const tx = db.transaction('presupuesto', 'readonly');
-    const store = tx.objectStore('presupuesto');
+// Obtener todas las tarjetas
+async function obtenerTarjetas() {
+    const tx = db.transaction('tarjetas', 'readonly');
+    const store = tx.objectStore('tarjetas');
     return new Promise((resolve, reject) => {
         const req = store.getAll();
         req.onsuccess = () => resolve(req.result);
@@ -129,9 +131,10 @@ async function obtenerPresupuesto() {
     });
 }
 
-async function eliminarPresupuesto(id) {
-    const tx = db.transaction('presupuesto', 'readwrite');
-    const store = tx.objectStore('presupuesto');
+// Eliminar una tarjeta
+async function eliminarTarjeta(id) {
+    const tx = db.transaction('tarjetas', 'readwrite');
+    const store = tx.objectStore('tarjetas');
     return new Promise((resolve, reject) => {
         const req = store.delete(id);
         req.onsuccess = () => resolve();
@@ -139,33 +142,120 @@ async function eliminarPresupuesto(id) {
     });
 }
 
+// Calcular deuda total de una tarjeta (basado en transacciones)
+async function calcularDeudaTarjeta(tarjetaId, mesActual, anioActual) {
+    const tx = db.transaction('transacciones', 'readonly');
+    const store = tx.objectStore('transacciones');
+    const index = store.index('tarjetaId');
+    
+    return new Promise((resolve, reject) => {
+        const req = index.getAll(tarjetaId);
+        req.onsuccess = () => {
+            const transacciones = req.result;
+            // Sumar solo las que no han sido pagadas (podemos agregar un campo "pagado")
+            const total = transacciones.reduce((sum, t) => sum + t.monto, 0);
+            resolve(total);
+        };
+        req.onerror = () => reject(req.error);
+    });
+}
+
+// Obtener gastos de una tarjeta por mes (para historial)
+async function obtenerGastosTarjetaPorMes(tarjetaId, mes, anio) {
+    const tx = db.transaction('transacciones', 'readonly');
+    const store = tx.objectStore('transacciones');
+    const index = store.index('tarjetaId');
+    
+    return new Promise((resolve, reject) => {
+        const req = index.getAll(tarjetaId);
+        req.onsuccess = () => {
+            const transacciones = req.result.filter(t => t.mes === mes && t.anio === anio);
+            resolve(transacciones);
+        };
+        req.onerror = () => reject(req.error);
+    });
+}
+
 // ============================================
-// ============ NUEVO: FUNCIONES CRUD (Subcategorías) ============
+// ============ GASTOS FIJOS ============
 // ============================================
 
-// Guardar una subcategoría (nueva o actualizar)
+// Guardar un gasto fijo
+async function guardarGastoFijo({ id, nombre, monto, categoria, subcategoria, diaPago, frecuencia = 'mensual' }) {
+    const tx = db.transaction('gastosFijos', 'readwrite');
+    const store = tx.objectStore('gastosFijos');
+    
+    const data = { nombre, monto, categoria, subcategoria, diaPago, frecuencia };
+    if (id) data.id = id;
+    
+    return new Promise((resolve, reject) => {
+        const req = id ? store.put(data) : store.add(data);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+// Obtener todos los gastos fijos
+async function obtenerGastosFijos() {
+    const tx = db.transaction('gastosFijos', 'readonly');
+    const store = tx.objectStore('gastosFijos');
+    return new Promise((resolve, reject) => {
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+// Eliminar un gasto fijo
+async function eliminarGastoFijo(id) {
+    const tx = db.transaction('gastosFijos', 'readwrite');
+    const store = tx.objectStore('gastosFijos');
+    return new Promise((resolve, reject) => {
+        const req = store.delete(id);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+    });
+}
+
+// Obtener gastos fijos que vencen en los próximos X días
+async function obtenerGastosFijosProximos(dias = 7) {
+    const gastos = await obtenerGastosFijos();
+    const hoy = new Date();
+    const diaActual = hoy.getDate();
+    const mesActual = hoy.getMonth() + 1;
+    
+    return gastos.filter(g => {
+        let diasHastaPago = g.diaPago - diaActual;
+        if (diasHastaPago < 0) {
+            // Si el día ya pasó este mes, calcular para el próximo mes
+            diasHastaPago = g.diaPago + (new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate() - diaActual);
+        }
+        return diasHastaPago <= dias && diasHastaPago >= 0;
+    });
+}
+
+// ============================================
+// ============ SUBCATEGORÍAS ============
+// ============================================
+
 async function guardarSubcategoria(categoria, nombre, monto = 0) {
     const tx = db.transaction(['subcategorias', 'presupuesto'], 'readwrite');
     const subStore = tx.objectStore('subcategorias');
     
-    // Buscar si ya existe
     const index = subStore.index('nombre');
     return new Promise((resolve, reject) => {
         const req = index.get(nombre);
         req.onsuccess = () => {
             const existing = req.result;
             if (existing) {
-                // Actualizar
                 existing.categoria = categoria;
                 const updateReq = subStore.put(existing);
                 updateReq.onsuccess = () => resolve(updateReq.result);
                 updateReq.onerror = () => reject(updateReq.error);
             } else {
-                // Crear nueva
                 const newItem = { categoria, nombre, monto: monto || 0 };
                 const addReq = subStore.add(newItem);
                 addReq.onsuccess = () => {
-                    // También guardar en presupuesto
                     guardarPresupuesto(categoria, nombre, monto || 0);
                     resolve(addReq.result);
                 };
@@ -176,7 +266,6 @@ async function guardarSubcategoria(categoria, nombre, monto = 0) {
     });
 }
 
-// Obtener todas las subcategorías
 async function obtenerSubcategorias() {
     const tx = db.transaction('subcategorias', 'readonly');
     const store = tx.objectStore('subcategorias');
@@ -187,46 +276,24 @@ async function obtenerSubcategorias() {
     });
 }
 
-// Obtener subcategorías por categoría
-async function obtenerSubcategoriasPorCategoria(categoria) {
-    const tx = db.transaction('subcategorias', 'readonly');
-    const store = tx.objectStore('subcategorias');
-    const index = store.index('categoria');
-    return new Promise((resolve, reject) => {
-        const req = index.getAll(categoria);
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-    });
-}
-
-// Eliminar una subcategoría
 async function eliminarSubcategoria(id) {
     const tx = db.transaction(['subcategorias', 'presupuesto'], 'readwrite');
-    
-    // Primero obtener la subcategoría para saber su nombre
     const subStore = tx.objectStore('subcategorias');
     const getReq = subStore.get(id);
     
     return new Promise((resolve, reject) => {
         getReq.onsuccess = () => {
             const item = getReq.result;
-            if (!item) {
-                resolve();
-                return;
-            }
+            if (!item) { resolve(); return; }
             
-            // Eliminar de subcategorías
             const deleteReq = subStore.delete(id);
             deleteReq.onsuccess = () => {
-                // Eliminar de presupuesto
                 const presStore = tx.objectStore('presupuesto');
                 const index = presStore.index('subcategoria');
                 const presReq = index.get(item.nombre);
                 presReq.onsuccess = () => {
                     const presItem = presReq.result;
-                    if (presItem) {
-                        presStore.delete(presItem.id);
-                    }
+                    if (presItem) presStore.delete(presItem.id);
                     resolve();
                 };
                 presReq.onerror = () => reject(presReq.error);
@@ -237,17 +304,13 @@ async function eliminarSubcategoria(id) {
     });
 }
 
-// Inicializar subcategorías por defecto (solo si no existen)
 async function inicializarSubcategorias() {
     const existentes = await obtenerSubcategorias();
     if (existentes.length > 0) return;
     
     const defaults = [
-        // Ingresos
         { categoria: 'INGRESOS', nombre: 'Sueldo', monto: 3200 },
         { categoria: 'INGRESOS', nombre: 'Freelance', monto: 0 },
-        
-        // Gastos Esenciales
         { categoria: 'GASTOS_ESENCIALES', nombre: 'Renta', monto: 1025 },
         { categoria: 'GASTOS_ESENCIALES', nombre: 'Super', monto: 200 },
         { categoria: 'GASTOS_ESENCIALES', nombre: 'Aseguranza carro', monto: 95 },
@@ -256,8 +319,6 @@ async function inicializarSubcategorias() {
         { categoria: 'GASTOS_ESENCIALES', nombre: 'Laptop', monto: 50 },
         { categoria: 'GASTOS_ESENCIALES', nombre: 'Internet', monto: 70 },
         { categoria: 'GASTOS_ESENCIALES', nombre: 'Mama', monto: 0 },
-        
-        // Gastos Discrecionales
         { categoria: 'GASTOS_DISCRECIONALES', nombre: 'Gastos variables', monto: 100 },
         { categoria: 'GASTOS_DISCRECIONALES', nombre: 'TC Free', monto: 0 },
         { categoria: 'GASTOS_DISCRECIONALES', nombre: 'TC Aeroméxico', monto: 0 },
@@ -272,16 +333,10 @@ async function inicializarSubcategorias() {
         { categoria: 'GASTOS_DISCRECIONALES', nombre: 'Taxes', monto: 0 },
         { categoria: 'GASTOS_DISCRECIONALES', nombre: 'TC AE $', monto: 0 },
         { categoria: 'GASTOS_DISCRECIONALES', nombre: 'LUZ HERMISTON', monto: 0 },
-        
-        // Pago de Deudas
         { categoria: 'PAGO_DEUDAS', nombre: 'Solares', monto: 550 },
         { categoria: 'PAGO_DEUDAS', nombre: 'Abono extra solar', monto: 0 },
-        
-        // Ahorros
         { categoria: 'AHORROS', nombre: 'Ahorro USA', monto: 400 },
         { categoria: 'AHORROS', nombre: 'Ahorro MX', monto: 400 },
-        
-        // Inversiones
         { categoria: 'INVERSIONES', nombre: 'Inversión', monto: 0 }
     ];
     
@@ -293,13 +348,14 @@ async function inicializarSubcategorias() {
 // ============================================
 // FUNCIONES CRUD (Transacciones)
 // ============================================
-async function guardarTransaccion({ mes, anio, categoria, subcategoria, fecha, monto, notas, revisado }) {
+async function guardarTransaccion({ mes, anio, categoria, subcategoria, fecha, monto, notas, revisado, tarjetaId = null }) {
     const tx = db.transaction('transacciones', 'readwrite');
     const store = tx.objectStore('transacciones');
     const newItem = { 
         mes, anio, categoria, subcategoria, fecha, monto, 
         notas: notas || '', 
-        revisado: revisado || false 
+        revisado: revisado || false,
+        tarjetaId: tarjetaId || null
     };
     return new Promise((resolve, reject) => {
         const req = store.add(newItem);
@@ -414,6 +470,90 @@ function calcularPatrimonioNeto(activos, pasivos) {
 }
 
 // ============================================
+// ============ NOTIFICACIONES ============
+// ============================================
+
+// Función para enviar notificaciones
+function enviarNotificacion(titulo, mensaje, icono = '💰') {
+    if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(titulo, {
+            body: mensaje,
+            icon: 'assets/icons/icon-192.png',
+            tag: 'recordatorio'
+        });
+    }
+}
+
+// Función para verificar y enviar recordatorios
+async function verificarRecordatorios() {
+    const hoy = new Date();
+    const diaActual = hoy.getDate();
+    const mesActual = hoy.getMonth() + 1;
+    const anioActual = hoy.getFullYear();
+    
+    // 1. Verificar pagos de tarjetas
+    const tarjetas = await obtenerTarjetas();
+    for (const tarjeta of tarjetas) {
+        const diasHastaPago = tarjeta.diaPago - diaActual;
+        const deuda = await calcularDeudaTarjeta(tarjeta.id, mesActual, anioActual);
+        
+        // Notificación 3 días antes
+        if (diasHastaPago === 3 && deuda > 0) {
+            enviarNotificacion(
+                `💳 ${tarjeta.nombre} vence en 3 días`,
+                `Debes $${deuda.toFixed(2)}. Pago el día ${tarjeta.diaPago}`
+            );
+        }
+        
+        // Notificación 1 día antes
+        if (diasHastaPago === 1 && deuda > 0) {
+            enviarNotificacion(
+                `⚠️ ¡Mañana vence ${tarjeta.nombre}!`,
+                `Tienes que pagar $${deuda.toFixed(2)}`
+            );
+        }
+        
+        // Notificación el día del pago
+        if (diasHastaPago === 0 && deuda > 0) {
+            enviarNotificacion(
+                `📢 ¡Hoy vence ${tarjeta.nombre}!`,
+                `Paga $${deuda.toFixed(2)} antes de que termine el día`
+            );
+        }
+
+        // Notificación semanal: división del pago
+        if (diasHastaPago > 0 && diasHastaPago <= 7 && deuda > 0) {
+            const semanasRestantes = Math.ceil(diasHastaPago / 7);
+            const pagoSemanal = deuda / semanasRestantes;
+            enviarNotificacion(
+                `📊 ${tarjeta.nombre} - Pago semanal`,
+                `Te toca pagar $${pagoSemanal.toFixed(2)} esta semana (${semanasRestantes} semanas restantes)`
+            );
+        }
+    }
+    
+    // 2. Verificar gastos fijos
+    const gastosFijos = await obtenerGastosFijos();
+    for (const gasto of gastosFijos) {
+        const diasHastaPago = gasto.diaPago - diaActual;
+        
+        if (diasHastaPago === 3) {
+            enviarNotificacion(
+                `🔔 ${gasto.nombre} vence en 3 días`,
+                `Debes pagar $${gasto.monto.toFixed(2)}`
+            );
+        }
+        
+        if (diasHastaPago === 0) {
+            enviarNotificacion(
+                `📢 ¡Hoy vence ${gasto.nombre}!`,
+                `Paga $${gasto.monto.toFixed(2)}`
+            );
+        }
+    }
+}
+
+// ============================================
 // UTILIDADES
 // ============================================
 function formatearMoneda(valor, moneda = '$') {
@@ -444,12 +584,22 @@ window.app = {
     guardarPatrimonio,
     obtenerPatrimonio,
     eliminarPatrimonio,
-    // Nuevas funciones de subcategorías
     guardarSubcategoria,
     obtenerSubcategorias,
-    obtenerSubcategoriasPorCategoria,
     eliminarSubcategoria,
     inicializarSubcategorias,
+    // Nuevas funciones
+    guardarTarjeta,
+    obtenerTarjetas,
+    eliminarTarjeta,
+    calcularDeudaTarjeta,
+    obtenerGastosTarjetaPorMes,
+    guardarGastoFijo,
+    obtenerGastosFijos,
+    eliminarGastoFijo,
+    obtenerGastosFijosProximos,
+    verificarRecordatorios,
+    enviarNotificacion,
     calcularTotalesPorCategoria,
     calcularRemanente,
     calcularPatrimonioNeto,
@@ -457,3 +607,32 @@ window.app = {
     obtenerNombreMes,
     CATEGORIAS
 };
+
+// ============================================
+// INICIALIZAR RECORDATORIOS
+// ============================================
+// Cuando la app se abre, verificar notificaciones
+document.addEventListener('DOMContentLoaded', async () => {
+    // Pedir permiso para notificaciones
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+    
+    // Verificar recordatorios al cargar
+    setTimeout(async () => {
+        try {
+            await window.app.verificarRecordatorios();
+        } catch (e) {
+            console.log('Error al verificar recordatorios:', e);
+        }
+    }, 2000);
+});
+
+// Verificar recordatorios cada 6 horas (21600000 ms)
+setInterval(async () => {
+    try {
+        await window.app.verificarRecordatorios();
+    } catch (e) {
+        console.log('Error al verificar recordatorios:', e);
+    }
+}, 21600000);
