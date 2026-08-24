@@ -2,7 +2,7 @@
 // CONFIGURACIÓN INICIAL
 // ============================================
 const DB_NAME = 'PresupuestoDB';
-const DB_VERSION = 5; // ← Nueva versión
+const DB_VERSION = 6; // Subimos a versión 6 para forzar reinicio
 let db = null;
 
 const CATEGORIAS = {
@@ -15,7 +15,7 @@ const CATEGORIAS = {
 };
 
 // ============================================
-// BASE DE DATOS (IndexedDB)
+// ABRIR BASE DE DATOS
 // ============================================
 function abrirDB() {
     return new Promise((resolve, reject) => {
@@ -30,7 +30,7 @@ function abrirDB() {
         request.onupgradeneeded = (event) => {
             const db = event.target.result;
             
-            // --- Stores existentes ---
+            // STORES EXISTENTES
             if (!db.objectStoreNames.contains('presupuesto')) {
                 const store = db.createObjectStore('presupuesto', { keyPath: 'id', autoIncrement: true });
                 store.createIndex('categoria', 'categoria', { unique: false });
@@ -62,13 +62,12 @@ function abrirDB() {
                 store.createIndex('nombre', 'nombre', { unique: false });
             }
 
-            // ============ NUEVO: TARJETAS DE CRÉDITO ============
+            // ============ NUEVOS STORES ============
             if (!db.objectStoreNames.contains('tarjetas')) {
                 const store = db.createObjectStore('tarjetas', { keyPath: 'id', autoIncrement: true });
                 store.createIndex('nombre', 'nombre', { unique: false });
             }
 
-            // ============ NUEVO: GASTOS FIJOS ============
             if (!db.objectStoreNames.contains('gastosFijos')) {
                 const store = db.createObjectStore('gastosFijos', { keyPath: 'id', autoIncrement: true });
                 store.createIndex('categoria', 'categoria', { unique: false });
@@ -102,28 +101,36 @@ async function obtenerConfiguracion(key) {
 }
 
 // ============================================
-// ============ TARJETAS DE CRÉDITO ============
+// FUNCIONES CRUD (Presupuesto)
 // ============================================
-
-// Guardar o actualizar una tarjeta
-async function guardarTarjeta({ id, nombre, diaCorte, diaPago, deudaActual = 0 }) {
-    const tx = db.transaction('tarjetas', 'readwrite');
-    const store = tx.objectStore('tarjetas');
-    
-    const data = { nombre, diaCorte, diaPago, deudaActual };
-    if (id) data.id = id;
+async function guardarPresupuesto(categoria, subcategoria, monto) {
+    const tx = db.transaction('presupuesto', 'readwrite');
+    const store = tx.objectStore('presupuesto');
+    const index = store.index('subcategoria');
     
     return new Promise((resolve, reject) => {
-        const req = id ? store.put(data) : store.add(data);
-        req.onsuccess = () => resolve(req.result);
+        const req = index.get(subcategoria);
+        req.onsuccess = () => {
+            const existing = req.result;
+            if (existing) {
+                existing.monto = monto;
+                const updateReq = store.put(existing);
+                updateReq.onsuccess = () => resolve(updateReq.result);
+                updateReq.onerror = () => reject(updateReq.error);
+            } else {
+                const newItem = { categoria, subcategoria, monto };
+                const addReq = store.add(newItem);
+                addReq.onsuccess = () => resolve(addReq.result);
+                addReq.onerror = () => reject(addReq.error);
+            }
+        };
         req.onerror = () => reject(req.error);
     });
 }
 
-// Obtener todas las tarjetas
-async function obtenerTarjetas() {
-    const tx = db.transaction('tarjetas', 'readonly');
-    const store = tx.objectStore('tarjetas');
+async function obtenerPresupuesto() {
+    const tx = db.transaction('presupuesto', 'readonly');
+    const store = tx.objectStore('presupuesto');
     return new Promise((resolve, reject) => {
         const req = store.getAll();
         req.onsuccess = () => resolve(req.result);
@@ -131,10 +138,9 @@ async function obtenerTarjetas() {
     });
 }
 
-// Eliminar una tarjeta
-async function eliminarTarjeta(id) {
-    const tx = db.transaction('tarjetas', 'readwrite');
-    const store = tx.objectStore('tarjetas');
+async function eliminarPresupuesto(id) {
+    const tx = db.transaction('presupuesto', 'readwrite');
+    const store = tx.objectStore('presupuesto');
     return new Promise((resolve, reject) => {
         const req = store.delete(id);
         req.onsuccess = () => resolve();
@@ -142,102 +148,9 @@ async function eliminarTarjeta(id) {
     });
 }
 
-// Calcular deuda total de una tarjeta (basado en transacciones)
-async function calcularDeudaTarjeta(tarjetaId, mesActual, anioActual) {
-    const tx = db.transaction('transacciones', 'readonly');
-    const store = tx.objectStore('transacciones');
-    const index = store.index('tarjetaId');
-    
-    return new Promise((resolve, reject) => {
-        const req = index.getAll(tarjetaId);
-        req.onsuccess = () => {
-            const transacciones = req.result;
-            // Sumar solo las que no han sido pagadas (podemos agregar un campo "pagado")
-            const total = transacciones.reduce((sum, t) => sum + t.monto, 0);
-            resolve(total);
-        };
-        req.onerror = () => reject(req.error);
-    });
-}
-
-// Obtener gastos de una tarjeta por mes (para historial)
-async function obtenerGastosTarjetaPorMes(tarjetaId, mes, anio) {
-    const tx = db.transaction('transacciones', 'readonly');
-    const store = tx.objectStore('transacciones');
-    const index = store.index('tarjetaId');
-    
-    return new Promise((resolve, reject) => {
-        const req = index.getAll(tarjetaId);
-        req.onsuccess = () => {
-            const transacciones = req.result.filter(t => t.mes === mes && t.anio === anio);
-            resolve(transacciones);
-        };
-        req.onerror = () => reject(req.error);
-    });
-}
-
 // ============================================
-// ============ GASTOS FIJOS ============
+// SUBCATEGORÍAS
 // ============================================
-
-// Guardar un gasto fijo
-async function guardarGastoFijo({ id, nombre, monto, categoria, subcategoria, diaPago, frecuencia = 'mensual' }) {
-    const tx = db.transaction('gastosFijos', 'readwrite');
-    const store = tx.objectStore('gastosFijos');
-    
-    const data = { nombre, monto, categoria, subcategoria, diaPago, frecuencia };
-    if (id) data.id = id;
-    
-    return new Promise((resolve, reject) => {
-        const req = id ? store.put(data) : store.add(data);
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-    });
-}
-
-// Obtener todos los gastos fijos
-async function obtenerGastosFijos() {
-    const tx = db.transaction('gastosFijos', 'readonly');
-    const store = tx.objectStore('gastosFijos');
-    return new Promise((resolve, reject) => {
-        const req = store.getAll();
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-    });
-}
-
-// Eliminar un gasto fijo
-async function eliminarGastoFijo(id) {
-    const tx = db.transaction('gastosFijos', 'readwrite');
-    const store = tx.objectStore('gastosFijos');
-    return new Promise((resolve, reject) => {
-        const req = store.delete(id);
-        req.onsuccess = () => resolve();
-        req.onerror = () => reject(req.error);
-    });
-}
-
-// Obtener gastos fijos que vencen en los próximos X días
-async function obtenerGastosFijosProximos(dias = 7) {
-    const gastos = await obtenerGastosFijos();
-    const hoy = new Date();
-    const diaActual = hoy.getDate();
-    const mesActual = hoy.getMonth() + 1;
-    
-    return gastos.filter(g => {
-        let diasHastaPago = g.diaPago - diaActual;
-        if (diasHastaPago < 0) {
-            // Si el día ya pasó este mes, calcular para el próximo mes
-            diasHastaPago = g.diaPago + (new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate() - diaActual);
-        }
-        return diasHastaPago <= dias && diasHastaPago >= 0;
-    });
-}
-
-// ============================================
-// ============ SUBCATEGORÍAS ============
-// ============================================
-
 async function guardarSubcategoria(categoria, nombre, monto = 0) {
     const tx = db.transaction(['subcategorias', 'presupuesto'], 'readwrite');
     const subStore = tx.objectStore('subcategorias');
@@ -310,7 +223,6 @@ async function inicializarSubcategorias() {
     
     const defaults = [
         { categoria: 'INGRESOS', nombre: 'Sueldo', monto: 3200 },
-        { categoria: 'INGRESOS', nombre: 'Freelance', monto: 0 },
         { categoria: 'GASTOS_ESENCIALES', nombre: 'Renta', monto: 1025 },
         { categoria: 'GASTOS_ESENCIALES', nombre: 'Super', monto: 200 },
         { categoria: 'GASTOS_ESENCIALES', nombre: 'Aseguranza carro', monto: 95 },
@@ -318,23 +230,10 @@ async function inicializarSubcategorias() {
         { categoria: 'GASTOS_ESENCIALES', nombre: 'Gasolina', monto: 100 },
         { categoria: 'GASTOS_ESENCIALES', nombre: 'Laptop', monto: 50 },
         { categoria: 'GASTOS_ESENCIALES', nombre: 'Internet', monto: 70 },
-        { categoria: 'GASTOS_ESENCIALES', nombre: 'Mama', monto: 0 },
         { categoria: 'GASTOS_DISCRECIONALES', nombre: 'Gastos variables', monto: 100 },
         { categoria: 'GASTOS_DISCRECIONALES', nombre: 'TC Free', monto: 0 },
-        { categoria: 'GASTOS_DISCRECIONALES', nombre: 'TC Aeroméxico', monto: 0 },
-        { categoria: 'GASTOS_DISCRECIONALES', nombre: 'TC América express', monto: 0 },
         { categoria: 'GASTOS_DISCRECIONALES', nombre: 'TC Nu', monto: 0 },
-        { categoria: 'GASTOS_DISCRECIONALES', nombre: 'TC Volaris Invex', monto: 0 },
-        { categoria: 'GASTOS_DISCRECIONALES', nombre: 'TC Mercado Pago', monto: 0 },
-        { categoria: 'GASTOS_DISCRECIONALES', nombre: 'Tj Maxx', monto: 0 },
-        { categoria: 'GASTOS_DISCRECIONALES', nombre: 'TC Discovery', monto: 0 },
-        { categoria: 'GASTOS_DISCRECIONALES', nombre: 'TC Gap', monto: 0 },
-        { categoria: 'GASTOS_DISCRECIONALES', nombre: 'After Pay', monto: 0 },
-        { categoria: 'GASTOS_DISCRECIONALES', nombre: 'Taxes', monto: 0 },
-        { categoria: 'GASTOS_DISCRECIONALES', nombre: 'TC AE $', monto: 0 },
-        { categoria: 'GASTOS_DISCRECIONALES', nombre: 'LUZ HERMISTON', monto: 0 },
         { categoria: 'PAGO_DEUDAS', nombre: 'Solares', monto: 550 },
-        { categoria: 'PAGO_DEUDAS', nombre: 'Abono extra solar', monto: 0 },
         { categoria: 'AHORROS', nombre: 'Ahorro USA', monto: 400 },
         { categoria: 'AHORROS', nombre: 'Ahorro MX', monto: 400 },
         { categoria: 'INVERSIONES', nombre: 'Inversión', monto: 0 }
@@ -346,7 +245,126 @@ async function inicializarSubcategorias() {
 }
 
 // ============================================
-// FUNCIONES CRUD (Transacciones)
+// TARJETAS DE CRÉDITO
+// ============================================
+async function guardarTarjeta({ id, nombre, diaCorte, diaPago, deudaActual = 0 }) {
+    const tx = db.transaction('tarjetas', 'readwrite');
+    const store = tx.objectStore('tarjetas');
+    
+    const data = { nombre, diaCorte, diaPago, deudaActual };
+    if (id) data.id = id;
+    
+    return new Promise((resolve, reject) => {
+        const req = id ? store.put(data) : store.add(data);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function obtenerTarjetas() {
+    const tx = db.transaction('tarjetas', 'readonly');
+    const store = tx.objectStore('tarjetas');
+    return new Promise((resolve, reject) => {
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function eliminarTarjeta(id) {
+    const tx = db.transaction('tarjetas', 'readwrite');
+    const store = tx.objectStore('tarjetas');
+    return new Promise((resolve, reject) => {
+        const req = store.delete(id);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function calcularDeudaTarjeta(tarjetaId, mes, anio) {
+    const tx = db.transaction('transacciones', 'readonly');
+    const store = tx.objectStore('transacciones');
+    const index = store.index('tarjetaId');
+    
+    return new Promise((resolve, reject) => {
+        const req = index.getAll(tarjetaId);
+        req.onsuccess = () => {
+            const transacciones = req.result.filter(t => t.mes === mes && t.anio === anio);
+            const total = transacciones.reduce((sum, t) => sum + t.monto, 0);
+            resolve(total);
+        };
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function obtenerGastosTarjetaPorMes(tarjetaId, mes, anio) {
+    const tx = db.transaction('transacciones', 'readonly');
+    const store = tx.objectStore('transacciones');
+    const index = store.index('tarjetaId');
+    
+    return new Promise((resolve, reject) => {
+        const req = index.getAll(tarjetaId);
+        req.onsuccess = () => {
+            const transacciones = req.result.filter(t => t.mes === mes && t.anio === anio);
+            resolve(transacciones);
+        };
+        req.onerror = () => reject(req.error);
+    });
+}
+
+// ============================================
+// GASTOS FIJOS
+// ============================================
+async function guardarGastoFijo({ id, nombre, monto, categoria, subcategoria, diaPago, frecuencia = 'mensual' }) {
+    const tx = db.transaction('gastosFijos', 'readwrite');
+    const store = tx.objectStore('gastosFijos');
+    
+    const data = { nombre, monto, categoria, subcategoria, diaPago, frecuencia };
+    if (id) data.id = id;
+    
+    return new Promise((resolve, reject) => {
+        const req = id ? store.put(data) : store.add(data);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function obtenerGastosFijos() {
+    const tx = db.transaction('gastosFijos', 'readonly');
+    const store = tx.objectStore('gastosFijos');
+    return new Promise((resolve, reject) => {
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function eliminarGastoFijo(id) {
+    const tx = db.transaction('gastosFijos', 'readwrite');
+    const store = tx.objectStore('gastosFijos');
+    return new Promise((resolve, reject) => {
+        const req = store.delete(id);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function obtenerGastosFijosProximos(dias = 7) {
+    const gastos = await obtenerGastosFijos();
+    const hoy = new Date();
+    const diaActual = hoy.getDate();
+    
+    return gastos.filter(g => {
+        let diasHastaPago = g.diaPago - diaActual;
+        if (diasHastaPago < 0) {
+            diasHastaPago = g.diaPago + (new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate() - diaActual);
+        }
+        return diasHastaPago <= dias && diasHastaPago >= 0;
+    });
+}
+
+// ============================================
+// TRANSACCIONES
 // ============================================
 async function guardarTransaccion({ mes, anio, categoria, subcategoria, fecha, monto, notas, revisado, tarjetaId = null }) {
     const tx = db.transaction('transacciones', 'readwrite');
@@ -378,16 +396,6 @@ async function obtenerTransacciones(mes, anio) {
     });
 }
 
-async function obtenerTodasTransacciones() {
-    const tx = db.transaction('transacciones', 'readonly');
-    const store = tx.objectStore('transacciones');
-    return new Promise((resolve, reject) => {
-        const req = store.getAll();
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-    });
-}
-
 async function eliminarTransaccion(id) {
     const tx = db.transaction('transacciones', 'readwrite');
     const store = tx.objectStore('transacciones');
@@ -399,7 +407,7 @@ async function eliminarTransaccion(id) {
 }
 
 // ============================================
-// FUNCIONES CRUD (Patrimonio)
+// PATRIMONIO
 // ============================================
 async function guardarPatrimonio({ mes, tipo, subcategoria, monto }) {
     const tx = db.transaction('patrimonio', 'readwrite');
@@ -434,7 +442,7 @@ async function eliminarPatrimonio(id) {
 }
 
 // ============================================
-// FUNCIONES DE CÁLCULO
+// CÁLCULOS
 // ============================================
 function calcularTotalesPorCategoria(transacciones) {
     const totales = {};
@@ -463,18 +471,20 @@ function calcularRemanente(transacciones) {
     return ingresos - gastos;
 }
 
-function calcularPatrimonioNeto(activos, pasivos) {
-    const totalActivos = activos.reduce((sum, a) => sum + a.monto, 0);
-    const totalPasivos = pasivos.reduce((sum, p) => sum + p.monto, 0);
-    return totalActivos - totalPasivos;
+function formatearMoneda(valor, moneda = '$') {
+    return moneda + ' ' + valor.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function obtenerNombreMes(mes) {
+    const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    return meses[mes - 1];
 }
 
 // ============================================
-// ============ NOTIFICACIONES ============
+// NOTIFICACIONES
 // ============================================
-
-// Función para enviar notificaciones
-function enviarNotificacion(titulo, mensaje, icono = '💰') {
+function enviarNotificacion(titulo, mensaje) {
     if ('Notification' in window && Notification.permission === 'granted') {
         new Notification(titulo, {
             body: mensaje,
@@ -484,44 +494,35 @@ function enviarNotificacion(titulo, mensaje, icono = '💰') {
     }
 }
 
-// Función para verificar y enviar recordatorios
 async function verificarRecordatorios() {
     const hoy = new Date();
     const diaActual = hoy.getDate();
     const mesActual = hoy.getMonth() + 1;
     const anioActual = hoy.getFullYear();
     
-    // 1. Verificar pagos de tarjetas
     const tarjetas = await obtenerTarjetas();
     for (const tarjeta of tarjetas) {
         const diasHastaPago = tarjeta.diaPago - diaActual;
         const deuda = await calcularDeudaTarjeta(tarjeta.id, mesActual, anioActual);
         
-        // Notificación 3 días antes
         if (diasHastaPago === 3 && deuda > 0) {
             enviarNotificacion(
                 `💳 ${tarjeta.nombre} vence en 3 días`,
                 `Debes $${deuda.toFixed(2)}. Pago el día ${tarjeta.diaPago}`
             );
         }
-        
-        // Notificación 1 día antes
         if (diasHastaPago === 1 && deuda > 0) {
             enviarNotificacion(
                 `⚠️ ¡Mañana vence ${tarjeta.nombre}!`,
                 `Tienes que pagar $${deuda.toFixed(2)}`
             );
         }
-        
-        // Notificación el día del pago
         if (diasHastaPago === 0 && deuda > 0) {
             enviarNotificacion(
                 `📢 ¡Hoy vence ${tarjeta.nombre}!`,
                 `Paga $${deuda.toFixed(2)} antes de que termine el día`
             );
         }
-
-        // Notificación semanal: división del pago
         if (diasHastaPago > 0 && diasHastaPago <= 7 && deuda > 0) {
             const semanasRestantes = Math.ceil(diasHastaPago / 7);
             const pagoSemanal = deuda / semanasRestantes;
@@ -532,18 +533,15 @@ async function verificarRecordatorios() {
         }
     }
     
-    // 2. Verificar gastos fijos
     const gastosFijos = await obtenerGastosFijos();
     for (const gasto of gastosFijos) {
         const diasHastaPago = gasto.diaPago - diaActual;
-        
         if (diasHastaPago === 3) {
             enviarNotificacion(
                 `🔔 ${gasto.nombre} vence en 3 días`,
                 `Debes pagar $${gasto.monto.toFixed(2)}`
             );
         }
-        
         if (diasHastaPago === 0) {
             enviarNotificacion(
                 `📢 ¡Hoy vence ${gasto.nombre}!`,
@@ -551,19 +549,6 @@ async function verificarRecordatorios() {
             );
         }
     }
-}
-
-// ============================================
-// UTILIDADES
-// ============================================
-function formatearMoneda(valor, moneda = '$') {
-    return moneda + ' ' + valor.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-}
-
-function obtenerNombreMes(mes) {
-    const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
-                   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-    return meses[mes - 1];
 }
 
 // ============================================
@@ -577,18 +562,10 @@ window.app = {
     guardarPresupuesto,
     obtenerPresupuesto,
     eliminarPresupuesto,
-    guardarTransaccion,
-    obtenerTransacciones,
-    obtenerTodasTransacciones,
-    eliminarTransaccion,
-    guardarPatrimonio,
-    obtenerPatrimonio,
-    eliminarPatrimonio,
     guardarSubcategoria,
     obtenerSubcategorias,
     eliminarSubcategoria,
     inicializarSubcategorias,
-    // Nuevas funciones
     guardarTarjeta,
     obtenerTarjetas,
     eliminarTarjeta,
@@ -598,40 +575,43 @@ window.app = {
     obtenerGastosFijos,
     eliminarGastoFijo,
     obtenerGastosFijosProximos,
+    guardarTransaccion,
+    obtenerTransacciones,
+    eliminarTransaccion,
+    guardarPatrimonio,
+    obtenerPatrimonio,
+    eliminarPatrimonio,
     verificarRecordatorios,
     enviarNotificacion,
     calcularTotalesPorCategoria,
     calcularRemanente,
-    calcularPatrimonioNeto,
     formatearMoneda,
     obtenerNombreMes,
     CATEGORIAS
 };
 
 // ============================================
-// INICIALIZAR RECORDATORIOS
+// INICIALIZAR
 // ============================================
-// Cuando la app se abre, verificar notificaciones
 document.addEventListener('DOMContentLoaded', async () => {
-    // Pedir permiso para notificaciones
+    await abrirDB();
+    
     if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission();
     }
     
-    // Verificar recordatorios al cargar
     setTimeout(async () => {
         try {
-            await window.app.verificarRecordatorios();
+            await verificarRecordatorios();
         } catch (e) {
             console.log('Error al verificar recordatorios:', e);
         }
-    }, 2000);
+    }, 3000);
 });
 
-// Verificar recordatorios cada 6 horas (21600000 ms)
 setInterval(async () => {
     try {
-        await window.app.verificarRecordatorios();
+        await verificarRecordatorios();
     } catch (e) {
         console.log('Error al verificar recordatorios:', e);
     }
