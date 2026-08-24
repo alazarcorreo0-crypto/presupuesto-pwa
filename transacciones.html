@@ -1,553 +1,337 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <link rel="stylesheet" href="styles.css">
-    <title>Transacciones</title>
-    <style>
-        .semana-tabs {
-            display: flex;
-            gap: 6px;
-            padding: 8px 16px;
-            overflow-x: auto;
-        }
-        .semana-tabs button {
-            flex: 1;
-            padding: 8px 12px;
-            border: none;
-            border-radius: 8px;
-            background: #e0e0e0;
-            font-size: 13px;
-            font-weight: 500;
-            cursor: pointer;
-            white-space: nowrap;
-        }
-        .semana-tabs button.active {
-            background: #2e7d32;
-            color: white;
-        }
-        .semana-tabs button:active {
-            opacity: 0.7;
-        }
-        .edit-form {
-            display: none;
-            background: #f8f9fa;
-            padding: 12px;
-            border-radius: 8px;
-            margin: 8px 16px;
-        }
-        .edit-form.active {
-            display: block;
-        }
-        .edit-form input,
-        .edit-form select {
-            width: 100%;
-            padding: 8px 10px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 14px;
-            margin-bottom: 6px;
-        }
-        .edit-form .row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 6px;
-        }
-        .edit-form button {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        .edit-form .btn-guardar {
-            background: #2e7d32;
-            color: white;
-        }
-        .edit-form .btn-cancelar {
-            background: #ccc;
-            color: #333;
-        }
-        .total-semana {
-            background: #e3f2fd;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 13px;
-            font-weight: 500;
-            display: inline-block;
-            margin: 4px 0;
-        }
-        .presupuesto-semana {
-            font-size: 12px;
-            color: #777;
-            margin-left: 8px;
-        }
-        .tarjeta-tag {
-            font-size: 10px;
-            background: #1565c0;
-            color: white;
-            padding: 1px 6px;
-            border-radius: 8px;
-            margin-left: 4px;
-        }
-        .row-tarjeta {
-            display: none;
-        }
-        .row-tarjeta.visible {
-            display: block;
-        }
-    </style>
-</head>
-<body>
-    <header class="header">
-        <a href="index.html" style="color:white; text-decoration:none; font-size:20px;">←</a>
-        <h1>💳 Transacciones</h1>
-        <span class="year" id="mesActual">Enero</span>
-    </header>
+<script>
+    let mesActual = new Date().getMonth() + 1;
+    let anioActual = new Date().getFullYear();
+    let transacciones = [];
+    let presupuesto = [];
+    let subcategorias = [];
+    let tarjetas = [];
+    let semanaSeleccionada = 1;
+    let editandoId = null;
 
-    <div style="display:flex; justify-content:space-between; padding:8px 16px; gap:8px; align-items:center;">
-        <button onclick="cambiarMes(-1)" style="padding:8px 12px; background:#ddd; border:none; border-radius:8px; font-size:16px;">◀</button>
-        <span id="mesDisplay" style="font-weight:bold; font-size:16px;">Enero 2025</span>
-        <button onclick="cambiarMes(1)" style="padding:8px 12px; background:#ddd; border:none; border-radius:8px; font-size:16px;">▶</button>
-        <select id="selectorAnio" onchange="cambiarAnio(this.value)" style="padding:6px 10px; border-radius:6px; border:1px solid #ddd;">
-            <option value="2025">2025</option>
-            <option value="2026">2026</option>
-            <option value="2027">2027</option>
-        </select>
-    </div>
-
-    <!-- Pestañas de semanas -->
-    <div class="semana-tabs" id="semanaTabs">
-        <button class="active" data-semana="1">📅 Semana 1</button>
-        <button data-semana="2">📅 Semana 2</button>
-        <button data-semana="3">📅 Semana 3</button>
-        <button data-semana="4">📅 Semana 4</button>
-    </div>
-
-    <div id="presupuestoSemanal" style="padding:0 16px; font-size:13px; color:#666;"></div>
-
-    <!-- Formulario de transacción -->
-    <div class="transaction-form">
-        <select id="categoriaSelect" onchange="cargarSubcategorias(); toggleTarjeta()">
-            <option value="INGRESOS">💰 Ingresos</option>
-            <option value="GASTOS_ESENCIALES">🏠 Gastos Esenciales</option>
-            <option value="GASTOS_DISCRECIONALES">🎮 Gastos Discrecionales</option>
-            <option value="PAGO_DEUDAS">💳 Pago Deudas</option>
-            <option value="AHORROS">🏦 Ahorros</option>
-            <option value="INVERSIONES">📈 Inversiones</option>
-        </select>
-        <select id="subcategoriaSelect">
-            <option value="">Seleccionar subcategoría</option>
-        </select>
-        <input type="date" id="fechaInput">
-        <input type="number" id="montoInput" placeholder="Monto" step="0.01">
-        <input type="text" id="notasInput" placeholder="Notas (opcional)">
+    document.addEventListener('DOMContentLoaded', async () => {
+        await window.app.abrirDB();
+        const anioConfig = await window.app.obtenerConfiguracion('anio');
+        if (anioConfig) anioActual = parseInt(anioConfig);
         
-        <!-- Selector de tarjeta -->
-        <div id="tarjetaContainer" style="margin: 8px 0;">
-            <select id="tarjetaSelect">
-                <option value="">Sin tarjeta</option>
-            </select>
-            <small style="font-size:11px; color:#999;">Asignar este gasto a una tarjeta de crédito</small>
-        </div>
+        document.getElementById('fechaInput').value = new Date().toISOString().split('T')[0];
+        document.getElementById('selectorAnio').value = anioActual;
         
-        <button onclick="agregarTransaccion()">➕ Agregar Transacción</button>
-    </div>
-
-    <!-- Formulario de edición -->
-    <div class="edit-form" id="editForm">
-        <h4 style="margin-bottom:8px;">✏️ Editar Transacción</h4>
-        <select id="editCategoria" onchange="cargarSubcategoriasEdit()">
-            <option value="INGRESOS">💰 Ingresos</option>
-            <option value="GASTOS_ESENCIALES">🏠 Gastos Esenciales</option>
-            <option value="GASTOS_DISCRECIONALES">🎮 Gastos Discrecionales</option>
-            <option value="PAGO_DEUDAS">💳 Pago Deudas</option>
-            <option value="AHORROS">🏦 Ahorros</option>
-            <option value="INVERSIONES">📈 Inversiones</option>
-        </select>
-        <select id="editSubcategoria">
-            <option value="">Seleccionar subcategoría</option>
-        </select>
-        <input type="date" id="editFecha">
-        <input type="number" id="editMonto" placeholder="Monto" step="0.01">
-        <input type="text" id="editNotas" placeholder="Notas">
-        <div class="row">
-            <button class="btn-guardar" onclick="guardarEdicion()">💾 Guardar</button>
-            <button class="btn-cancelar" onclick="cancelarEdicion()">❌ Cancelar</button>
-        </div>
-        <input type="hidden" id="editId">
-    </div>
-
-    <!-- Resumen -->
-    <div class="summary-grid" style="padding:8px 16px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
-        <div class="summary-box ingresos">
-            <small>💰 Ingresos</small>
-            <strong id="totalIngresos">$0.00</strong>
-        </div>
-        <div class="summary-box gastos">
-            <small>💸 Gastos</small>
-            <strong id="totalGastos">$0.00</strong>
-        </div>
-        <div class="summary-box remanente">
-            <small>📊 Remanente</small>
-            <strong id="totalRemanente">$0.00</strong>
-        </div>
-    </div>
-
-    <!-- Lista de transacciones -->
-    <div class="transaction-list" id="transactionList"></div>
-
-    <nav class="bottom-nav">
-        <a href="index.html"><span class="icon">🏠</span>Inicio</a>
-        <a href="presupuesto.html"><span class="icon">📋</span>Presupuesto</a>
-        <a href="transacciones.html" class="active"><span class="icon">💳</span>Gastos</a>
-        <a href="dashboard.html"><span class="icon">📊</span>Dashboard</a>
-        <a href="patrimonio.html"><span class="icon">🏦</span>Patrimonio</a>
-    </nav>
-
-    <script src="app.js"></script>
-    <script>
-        let mesActual = new Date().getMonth() + 1;
-        let anioActual = new Date().getFullYear();
-        let transacciones = [];
-        let presupuesto = [];
-        let subcategorias = [];
-        let tarjetas = [];
-        let semanaSeleccionada = 1;
-        let editandoId = null;
-
-        document.addEventListener('DOMContentLoaded', async () => {
-            await window.app.abrirDB();
-            const anioConfig = await window.app.obtenerConfiguracion('anio');
-            if (anioConfig) anioActual = parseInt(anioConfig);
-            
-            document.getElementById('fechaInput').value = new Date().toISOString().split('T')[0];
-            document.getElementById('selectorAnio').value = anioActual;
-            
-            presupuesto = await window.app.obtenerPresupuesto();
-            subcategorias = await window.app.obtenerSubcategorias();
-            tarjetas = await window.app.obtenerTarjetas();
-            
-            await cargarTarjetasEnSelect();
-            await cargarSubcategorias();
-            await cargarTransacciones();
-            actualizarMesDisplay();
-            
-            // Evento de pestañas de semanas
-            document.querySelectorAll('#semanaTabs button').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    document.querySelectorAll('#semanaTabs button').forEach(b => b.classList.remove('active'));
-                    this.classList.add('active');
-                    semanaSeleccionada = parseInt(this.dataset.semana);
-                    renderizarTransacciones();
-                    actualizarResumen();
-                });
+        presupuesto = await window.app.obtenerPresupuesto();
+        subcategorias = await window.app.obtenerSubcategorias();
+        tarjetas = await window.app.obtenerTarjetas();
+        
+        await cargarTarjetasEnSelect();
+        await cargarSubcategorias();
+        await cargarTransacciones();
+        actualizarMesDisplay();
+        
+        document.querySelectorAll('#semanaTabs button').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('#semanaTabs button').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                semanaSeleccionada = parseInt(this.dataset.semana);
+                renderizarTransacciones();
+                actualizarResumen();
             });
         });
+    });
 
-        async function cargarTarjetasEnSelect() {
-            tarjetas = await window.app.obtenerTarjetas();
-            const select = document.getElementById('tarjetaSelect');
-            select.innerHTML = '<option value="">Sin tarjeta</option>';
-            tarjetas.forEach(t => {
+    async function cargarTarjetasEnSelect() {
+        tarjetas = await window.app.obtenerTarjetas();
+        const select = document.getElementById('tarjetaSelect');
+        select.innerHTML = '<option value="">Sin tarjeta</option>';
+        tarjetas.forEach(t => {
+            const option = document.createElement('option');
+            option.value = t.id;
+            option.textContent = `💳 ${t.nombre}`;
+            select.appendChild(option);
+        });
+    }
+
+    function toggleTarjeta() {
+        const categoria = document.getElementById('categoriaSelect').value;
+        const container = document.getElementById('tarjetaContainer');
+        if (categoria === 'INGRESOS') {
+            container.style.display = 'none';
+        } else {
+            container.style.display = 'block';
+        }
+    }
+
+    async function cargarSubcategorias() {
+        const categoria = document.getElementById('categoriaSelect').value;
+        const select = document.getElementById('subcategoriaSelect');
+        select.innerHTML = '<option value="">Seleccionar subcategoría</option>';
+        
+        const items = subcategorias.filter(s => s.categoria === categoria);
+        items.forEach(item => {
+            if (item.nombre) {
                 const option = document.createElement('option');
-                option.value = t.id;
-                option.textContent = `💳 ${t.nombre}`;
+                option.value = item.nombre;
+                option.textContent = item.nombre;
                 select.appendChild(option);
-            });
-        }
-
-        function toggleTarjeta() {
-            const categoria = document.getElementById('categoriaSelect').value;
-            const container = document.getElementById('tarjetaContainer');
-            if (categoria === 'INGRESOS') {
-                container.style.display = 'none';
-            } else {
-                container.style.display = 'block';
             }
-        }
+        });
+        toggleTarjeta();
+    }
 
-        async function cargarSubcategorias() {
-            const categoria = document.getElementById('categoriaSelect').value;
-            const select = document.getElementById('subcategoriaSelect');
-            select.innerHTML = '<option value="">Seleccionar subcategoría</option>';
-            
-            const items = subcategorias.filter(s => s.categoria === categoria);
-            items.forEach(item => {
-                if (item.nombre) {
-                    const option = document.createElement('option');
-                    option.value = item.nombre;
-                    option.textContent = item.nombre;
-                    select.appendChild(option);
-                }
-            });
-            toggleTarjeta();
+    // IMPORTANTE: Esta función debe existir y ser GLOBAL
+    window.agregarTransaccion = async function() {
+        const categoria = document.getElementById('categoriaSelect').value;
+        const subcategoria = document.getElementById('subcategoriaSelect').value;
+        const fecha = document.getElementById('fechaInput').value;
+        const monto = parseFloat(document.getElementById('montoInput').value);
+        const notas = document.getElementById('notasInput').value;
+        const tarjetaId = parseInt(document.getElementById('tarjetaSelect').value) || null;
+        
+        if (!monto || monto <= 0) {
+            alert('Por favor ingresa un monto válido');
+            return;
         }
-
-        async function cargarSubcategoriasEdit() {
-            const categoria = document.getElementById('editCategoria').value;
-            const select = document.getElementById('editSubcategoria');
-            select.innerHTML = '<option value="">Seleccionar subcategoría</option>';
-            
-            const items = subcategorias.filter(s => s.categoria === categoria);
-            items.forEach(item => {
-                if (item.nombre) {
-                    const option = document.createElement('option');
-                    option.value = item.nombre;
-                    option.textContent = item.nombre;
-                    select.appendChild(option);
-                }
-            });
+        if (!subcategoria) {
+            alert('Por favor selecciona una subcategoría');
+            return;
         }
-
-        function obtenerSemanaDelMes(fecha) {
-            const dia = new Date(fecha).getDate();
-            if (dia <= 7) return 1;
-            if (dia <= 14) return 2;
-            if (dia <= 21) return 3;
-            return 4;
+        
+        await window.app.guardarTransaccion({
+            mes: mesActual,
+            anio: anioActual,
+            categoria,
+            subcategoria,
+            fecha,
+            monto,
+            notas,
+            tarjetaId
+        });
+        
+        document.getElementById('montoInput').value = '';
+        document.getElementById('notasInput').value = '';
+        document.getElementById('tarjetaSelect').value = '';
+        
+        if (tarjetaId) {
+            await actualizarDeudaTarjeta(tarjetaId);
         }
+        
+        await cargarTransacciones();
+    };
 
-        function getPresupuestoSemanal(categoria) {
-            const items = presupuesto.filter(p => p.categoria === categoria);
-            const total = items.reduce((sum, i) => sum + i.monto, 0);
-            return Math.round((total / 4) * 100) / 100;
-        }
+    // ============ RESTO DE FUNCIONES ============
+    // (Mantén el resto de funciones igual, solo asegúrate de que todas estén definidas)
 
-        async function cargarTransacciones() {
-            transacciones = await window.app.obtenerTransacciones(mesActual, anioActual);
-            renderizarTransacciones();
-            actualizarResumen();
-            actualizarPresupuestoSemanal();
-        }
-
-        function renderizarTransacciones() {
-            const list = document.getElementById('transactionList');
-            list.innerHTML = '';
-            
-            const filtradas = transacciones.filter(t => {
-                const semana = obtenerSemanaDelMes(t.fecha);
-                return semana === semanaSeleccionada;
-            });
-            
-            if (filtradas.length === 0) {
-                list.innerHTML = '<p style="text-align:center; color:#999; padding:20px;">No hay transacciones esta semana</p>';
-                return;
+    async function cargarSubcategoriasEdit() {
+        const categoria = document.getElementById('editCategoria').value;
+        const select = document.getElementById('editSubcategoria');
+        select.innerHTML = '<option value="">Seleccionar subcategoría</option>';
+        const items = subcategorias.filter(s => s.categoria === categoria);
+        items.forEach(item => {
+            if (item.nombre) {
+                const option = document.createElement('option');
+                option.value = item.nombre;
+                option.textContent = item.nombre;
+                select.appendChild(option);
             }
-            
-            filtradas.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
-            
-            const moneda = localStorage.getItem('moneda') || '$';
-            
-            filtradas.forEach(t => {
-                const div = document.createElement('div');
-                div.className = 'transaction-item';
-                const esIngreso = t.categoria === 'INGRESOS';
-                let tarjetaNombre = '';
-                if (t.tarjetaId) {
-                    const tarjeta = tarjetas.find(tj => tj.id === t.tarjetaId);
-                    tarjetaNombre = tarjeta ? ` 💳${tarjeta.nombre}` : '';
-                }
-                div.innerHTML = `
-                    <div class="info">
-                        <span class="name">${t.subcategoria || t.categoria}${tarjetaNombre ? `<span class="tarjeta-tag">${tarjetaNombre}</span>` : ''}</span>
-                        <span class="category">${t.categoria} • ${t.fecha}</span>
-                        ${t.notas ? `<span class="notes">📝 ${t.notas}</span>` : ''}
-                    </div>
-                    <div style="display:flex; align-items:center; gap:6px;">
-                        <span class="amount ${esIngreso ? 'ingreso' : 'gasto'}">
-                            ${esIngreso ? '+' : '-'} ${window.app.formatearMoneda(t.monto, moneda)}
-                        </span>
-                        <button onclick="editarTransaccion(${t.id})" style="background:none; border:none; font-size:16px; cursor:pointer;">✏️</button>
-                        <button onclick="eliminarTransaccion(${t.id})" style="background:none; border:none; color:#c62828; font-size:16px; cursor:pointer;">🗑️</button>
-                    </div>
-                `;
-                list.appendChild(div);
+        });
+    }
+
+    function obtenerSemanaDelMes(fecha) {
+        const dia = new Date(fecha).getDate();
+        if (dia <= 7) return 1;
+        if (dia <= 14) return 2;
+        if (dia <= 21) return 3;
+        return 4;
+    }
+
+    function getPresupuestoSemanal(categoria) {
+        const items = presupuesto.filter(p => p.categoria === categoria);
+        const total = items.reduce((sum, i) => sum + i.monto, 0);
+        return Math.round((total / 4) * 100) / 100;
+    }
+
+    async function cargarTransacciones() {
+        transacciones = await window.app.obtenerTransacciones(mesActual, anioActual);
+        renderizarTransacciones();
+        actualizarResumen();
+        actualizarPresupuestoSemanal();
+    }
+
+    function renderizarTransacciones() {
+        const list = document.getElementById('transactionList');
+        list.innerHTML = '';
+        
+        const filtradas = transacciones.filter(t => {
+            const semana = obtenerSemanaDelMes(t.fecha);
+            return semana === semanaSeleccionada;
+        });
+        
+        if (filtradas.length === 0) {
+            list.innerHTML = '<p style="text-align:center; color:#999; padding:20px;">No hay transacciones esta semana</p>';
+            return;
+        }
+        
+        filtradas.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+        const moneda = localStorage.getItem('moneda') || '$';
+        
+        filtradas.forEach(t => {
+            const div = document.createElement('div');
+            div.className = 'transaction-item';
+            const esIngreso = t.categoria === 'INGRESOS';
+            let tarjetaNombre = '';
+            if (t.tarjetaId) {
+                const tarjeta = tarjetas.find(tj => tj.id === t.tarjetaId);
+                tarjetaNombre = tarjeta ? ` 💳${tarjeta.nombre}` : '';
+            }
+            div.innerHTML = `
+                <div class="info">
+                    <span class="name">${t.subcategoria || t.categoria}${tarjetaNombre ? `<span class="tarjeta-tag">${tarjetaNombre}</span>` : ''}</span>
+                    <span class="category">${t.categoria} • ${t.fecha}</span>
+                    ${t.notas ? `<span class="notes">📝 ${t.notas}</span>` : ''}
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <span class="amount ${esIngreso ? 'ingreso' : 'gasto'}">
+                        ${esIngreso ? '+' : '-'} ${window.app.formatearMoneda(t.monto, moneda)}
+                    </span>
+                    <button onclick="editarTransaccion(${t.id})" style="background:none; border:none; font-size:16px; cursor:pointer;">✏️</button>
+                    <button onclick="eliminarTransaccion(${t.id})" style="background:none; border:none; color:#c62828; font-size:16px; cursor:pointer;">🗑️</button>
+                </div>
+            `;
+            list.appendChild(div);
+        });
+    }
+
+    function actualizarPresupuestoSemanal() {
+        const container = document.getElementById('presupuestoSemanal');
+        const categorias = ['GASTOS_ESENCIALES', 'GASTOS_DISCRECIONALES', 'PAGO_DEUDAS'];
+        let html = '';
+        categorias.forEach(cat => {
+            const total = getPresupuestoSemanal(cat);
+            if (total > 0) {
+                html += `<span class="total-semana">${cat.replace('_', ' ')}: $${total.toFixed(2)}</span> `;
+            }
+        });
+        container.innerHTML = html || 'Sin presupuesto semanal configurado.';
+    }
+
+    function actualizarResumen() {
+        const filtradas = transacciones.filter(t => {
+            const semana = obtenerSemanaDelMes(t.fecha);
+            return semana === semanaSeleccionada;
+        });
+        
+        const totales = window.app.calcularTotalesPorCategoria(filtradas);
+        const ingresos = totales.INGRESOS || 0;
+        const gastos = (totales.GASTOS_ESENCIALES || 0) + 
+                      (totales.GASTOS_DISCRECIONALES || 0) + 
+                      (totales.PAGO_DEUDAS || 0) + 
+                      (totales.AHORROS || 0) + 
+                      (totales.INVERSIONES || 0);
+        const remanente = ingresos - gastos;
+        
+        const moneda = localStorage.getItem('moneda') || '$';
+        
+        document.getElementById('totalIngresos').textContent = window.app.formatearMoneda(ingresos, moneda);
+        document.getElementById('totalGastos').textContent = window.app.formatearMoneda(gastos, moneda);
+        document.getElementById('totalRemanente').textContent = window.app.formatearMoneda(remanente, moneda);
+        document.getElementById('totalRemanente').style.color = remanente >= 0 ? '#2e7d32' : '#c62828';
+    }
+
+    async function actualizarDeudaTarjeta(tarjetaId) {
+        const deuda = await window.app.calcularDeudaTarjeta(tarjetaId, mesActual, anioActual);
+        const tarjeta = tarjetas.find(t => t.id === tarjetaId);
+        if (tarjeta) {
+            await window.app.guardarTarjeta({
+                id: tarjetaId,
+                nombre: tarjeta.nombre,
+                diaCorte: tarjeta.diaCorte,
+                diaPago: tarjeta.diaPago,
+                deudaActual: deuda
             });
         }
+    }
 
-        function actualizarPresupuestoSemanal() {
-            const container = document.getElementById('presupuestoSemanal');
-            const categorias = ['GASTOS_ESENCIALES', 'GASTOS_DISCRECIONALES', 'PAGO_DEUDAS'];
-            let html = '';
-            categorias.forEach(cat => {
-                const total = getPresupuestoSemanal(cat);
-                if (total > 0) {
-                    html += `<span class="total-semana">${cat.replace('_', ' ')}: $${total.toFixed(2)}</span> `;
-                }
-            });
-            container.innerHTML = html || 'Sin presupuesto semanal configurado.';
+    function editarTransaccion(id) {
+        const t = transacciones.find(t => t.id === id);
+        if (!t) return;
+        
+        editandoId = id;
+        document.getElementById('editForm').classList.add('active');
+        document.getElementById('editCategoria').value = t.categoria;
+        document.getElementById('editFecha').value = t.fecha;
+        document.getElementById('editMonto').value = t.monto;
+        document.getElementById('editNotas').value = t.notas || '';
+        document.getElementById('editId').value = id;
+        
+        cargarSubcategoriasEdit();
+        setTimeout(() => {
+            document.getElementById('editSubcategoria').value = t.subcategoria;
+        }, 100);
+    }
+
+    async function guardarEdicion() {
+        const id = parseInt(document.getElementById('editId').value);
+        const categoria = document.getElementById('editCategoria').value;
+        const subcategoria = document.getElementById('editSubcategoria').value;
+        const fecha = document.getElementById('editFecha').value;
+        const monto = parseFloat(document.getElementById('editMonto').value);
+        const notas = document.getElementById('editNotas').value;
+        
+        if (!monto || monto <= 0) {
+            alert('Monto válido requerido');
+            return;
         }
+        
+        await window.app.eliminarTransaccion(id);
+        await window.app.guardarTransaccion({
+            mes: mesActual,
+            anio: anioActual,
+            categoria,
+            subcategoria,
+            fecha,
+            monto,
+            notas
+        });
+        
+        cancelarEdicion();
+        await cargarTransacciones();
+    }
 
-        function actualizarResumen() {
-            const filtradas = transacciones.filter(t => {
-                const semana = obtenerSemanaDelMes(t.fecha);
-                return semana === semanaSeleccionada;
-            });
-            
-            const totales = window.app.calcularTotalesPorCategoria(filtradas);
-            const ingresos = totales.INGRESOS || 0;
-            const gastos = (totales.GASTOS_ESENCIALES || 0) + 
-                          (totales.GASTOS_DISCRECIONALES || 0) + 
-                          (totales.PAGO_DEUDAS || 0) + 
-                          (totales.AHORROS || 0) + 
-                          (totales.INVERSIONES || 0);
-            const remanente = ingresos - gastos;
-            
-            const moneda = localStorage.getItem('moneda') || '$';
-            
-            document.getElementById('totalIngresos').textContent = window.app.formatearMoneda(ingresos, moneda);
-            document.getElementById('totalGastos').textContent = window.app.formatearMoneda(gastos, moneda);
-            document.getElementById('totalRemanente').textContent = window.app.formatearMoneda(remanente, moneda);
-            document.getElementById('totalRemanente').style.color = remanente >= 0 ? '#2e7d32' : '#c62828';
-        }
+    function cancelarEdicion() {
+        document.getElementById('editForm').classList.remove('active');
+        editandoId = null;
+        document.getElementById('editId').value = '';
+    }
 
-        async function agregarTransaccion() {
-            const categoria = document.getElementById('categoriaSelect').value;
-            const subcategoria = document.getElementById('subcategoriaSelect').value;
-            const fecha = document.getElementById('fechaInput').value;
-            const monto = parseFloat(document.getElementById('montoInput').value);
-            const notas = document.getElementById('notasInput').value;
-            const tarjetaId = parseInt(document.getElementById('tarjetaSelect').value) || null;
-            
-            if (!monto || monto <= 0) {
-                alert('Por favor ingresa un monto válido');
-                return;
-            }
-            
-            if (!subcategoria) {
-                alert('Por favor selecciona una subcategoría');
-                return;
-            }
-            
-            await window.app.guardarTransaccion({
-                mes: mesActual,
-                anio: anioActual,
-                categoria,
-                subcategoria,
-                fecha,
-                monto,
-                notas,
-                tarjetaId
-            });
-            
-            document.getElementById('montoInput').value = '';
-            document.getElementById('notasInput').value = '';
-            document.getElementById('tarjetaSelect').value = '';
-            
-            // Actualizar deuda de la tarjeta si se asignó
-            if (tarjetaId) {
-                await actualizarDeudaTarjeta(tarjetaId);
-            }
-            
-            await cargarTransacciones();
-        }
-
-        async function actualizarDeudaTarjeta(tarjetaId) {
-            const deuda = await window.app.calcularDeudaTarjeta(tarjetaId, mesActual, anioActual);
-            const tarjeta = tarjetas.find(t => t.id === tarjetaId);
-            if (tarjeta) {
-                await window.app.guardarTarjeta({
-                    id: tarjetaId,
-                    nombre: tarjeta.nombre,
-                    diaCorte: tarjeta.diaCorte,
-                    diaPago: tarjeta.diaPago,
-                    deudaActual: deuda
-                });
-            }
-        }
-
-        function editarTransaccion(id) {
+    async function eliminarTransaccion(id) {
+        if (confirm('¿Eliminar esta transacción?')) {
             const t = transacciones.find(t => t.id === id);
-            if (!t) return;
-            
-            editandoId = id;
-            document.getElementById('editForm').classList.add('active');
-            document.getElementById('editCategoria').value = t.categoria;
-            document.getElementById('editFecha').value = t.fecha;
-            document.getElementById('editMonto').value = t.monto;
-            document.getElementById('editNotas').value = t.notas || '';
-            document.getElementById('editId').value = id;
-            
-            cargarSubcategoriasEdit();
-            setTimeout(() => {
-                document.getElementById('editSubcategoria').value = t.subcategoria;
-            }, 100);
-        }
-
-        async function guardarEdicion() {
-            const id = parseInt(document.getElementById('editId').value);
-            const categoria = document.getElementById('editCategoria').value;
-            const subcategoria = document.getElementById('editSubcategoria').value;
-            const fecha = document.getElementById('editFecha').value;
-            const monto = parseFloat(document.getElementById('editMonto').value);
-            const notas = document.getElementById('editNotas').value;
-            
-            if (!monto || monto <= 0) {
-                alert('Monto válido requerido');
-                return;
-            }
-            
-            // Eliminar la anterior y crear una nueva
             await window.app.eliminarTransaccion(id);
-            await window.app.guardarTransaccion({
-                mes: mesActual,
-                anio: anioActual,
-                categoria,
-                subcategoria,
-                fecha,
-                monto,
-                notas
-            });
-            
-            cancelarEdicion();
+            if (t && t.tarjetaId) {
+                await actualizarDeudaTarjeta(t.tarjetaId);
+            }
             await cargarTransacciones();
         }
+    }
 
-        function cancelarEdicion() {
-            document.getElementById('editForm').classList.remove('active');
-            editandoId = null;
-            document.getElementById('editId').value = '';
-        }
+    function actualizarMesDisplay() {
+        const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        document.getElementById('mesActual').textContent = meses[mesActual - 1];
+        document.getElementById('mesDisplay').textContent = `${meses[mesActual - 1]} ${anioActual}`;
+    }
 
-        async function eliminarTransaccion(id) {
-            if (confirm('¿Eliminar esta transacción?')) {
-                const t = transacciones.find(t => t.id === id);
-                await window.app.eliminarTransaccion(id);
-                
-                // Actualizar deuda de la tarjeta si tenía
-                if (t && t.tarjetaId) {
-                    await actualizarDeudaTarjeta(t.tarjetaId);
-                }
-                
-                await cargarTransacciones();
-            }
-        }
+    function cambiarMes(delta) {
+        mesActual += delta;
+        if (mesActual > 12) { mesActual = 1; anioActual++; }
+        if (mesActual < 1) { mesActual = 12; anioActual--; }
+        document.getElementById('selectorAnio').value = anioActual;
+        actualizarMesDisplay();
+        cargarTransacciones();
+    }
 
-        function actualizarMesDisplay() {
-            const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
-                          'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-            document.getElementById('mesActual').textContent = meses[mesActual - 1];
-            document.getElementById('mesDisplay').textContent = `${meses[mesActual - 1]} ${anioActual}`;
-        }
+    function cambiarAnio(anio) {
+        anioActual = parseInt(anio);
+        actualizarMesDisplay();
+        cargarTransacciones();
+    }
 
-        function cambiarMes(delta) {
-            mesActual += delta;
-            if (mesActual > 12) { mesActual = 1; anioActual++; }
-            if (mesActual < 1) { mesActual = 12; anioActual--; }
-            document.getElementById('selectorAnio').value = anioActual;
-            actualizarMesDisplay();
-            cargarTransacciones();
-        }
-
-        function cambiarAnio(anio) {
-            anioActual = parseInt(anio);
-            actualizarMesDisplay();
-            cargarTransacciones();
-        }
-
-        document.getElementById('categoriaSelect').addEventListener('change', cargarSubcategorias);
-    </script>
-</body>
-</html>
+    document.getElementById('categoriaSelect').addEventListener('change', cargarSubcategorias);
+</script>
