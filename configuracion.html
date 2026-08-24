@@ -36,6 +36,8 @@
             align-items: center;
             padding: 8px 0;
             border-bottom: 1px solid var(--border);
+            flex-wrap: wrap;
+            gap: 6px;
         }
         .config-item:last-child { border-bottom: none; }
         .config-item .label { font-size: 14px; color: var(--text); }
@@ -47,6 +49,8 @@
             font-size: 14px;
             background: var(--bg);
             color: var(--text);
+            flex: 1;
+            min-width: 80px;
         }
         .config-item .acciones button {
             background: none;
@@ -66,7 +70,6 @@
             font-size: 14px;
             cursor: pointer;
         }
-        .btn-danger:active { opacity: 0.8; }
         .btn-success {
             background: var(--primary);
             color: white;
@@ -119,16 +122,15 @@
             left: 20px;
         }
 
-        /* Estilos para el formulario de nueva subcategoría */
-        .sub-form {
+        /* Formulario de tarjetas */
+        .form-row {
             display: grid;
-            grid-template-columns: 1fr 1fr auto;
+            grid-template-columns: 1fr 1fr;
             gap: 8px;
-            margin-bottom: 12px;
-            align-items: end;
+            margin-bottom: 8px;
         }
-        .sub-form select,
-        .sub-form input {
+        .form-row input,
+        .form-row select {
             padding: 8px 10px;
             border: 1px solid var(--border);
             border-radius: 6px;
@@ -137,7 +139,10 @@
             color: var(--text);
             width: 100%;
         }
-        .sub-form button {
+        .form-row.full {
+            grid-template-columns: 1fr;
+        }
+        .btn-agregar {
             padding: 8px 16px;
             background: var(--primary);
             color: white;
@@ -145,47 +150,61 @@
             border-radius: 6px;
             font-size: 14px;
             cursor: pointer;
-            white-space: nowrap;
+            width: 100%;
         }
-        .sub-form button:active { opacity: 0.8; }
+        .btn-agregar:active { opacity: 0.8; }
 
-        .sub-lista {
-            max-height: 250px;
+        .lista-items {
+            max-height: 200px;
             overflow-y: auto;
+            margin-top: 8px;
         }
-        .sub-lista .sub-item {
+        .lista-items .item {
             display: flex;
             justify-content: space-between;
             align-items: center;
             padding: 6px 0;
             border-bottom: 1px solid var(--border);
             font-size: 14px;
+            flex-wrap: wrap;
+            gap: 4px;
         }
-        .sub-lista .sub-item .cat-tag {
+        .lista-items .item .info {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .lista-items .item .tag {
             font-size: 10px;
             color: white;
-            background: var(--primary);
             padding: 2px 8px;
             border-radius: 10px;
-            margin-right: 8px;
         }
-        .sub-lista .sub-item .acciones button {
+        .lista-items .item .tag.tarjeta { background: #1565c0; }
+        .lista-items .item .tag.gasto { background: #f9a825; }
+        .lista-items .item .acciones button {
             background: none;
             border: none;
             font-size: 14px;
             cursor: pointer;
             padding: 2px 4px;
         }
-        .sub-lista .sub-item .acciones .editar { color: var(--info); }
-        .sub-lista .sub-item .acciones .eliminar { color: var(--danger); }
-        .sub-lista .vacio {
+        .lista-items .item .acciones .editar { color: var(--info); }
+        .lista-items .item .acciones .eliminar { color: var(--danger); }
+        .lista-items .vacio {
             text-align: center;
             color: #999;
             padding: 12px 0;
             font-size: 14px;
         }
 
-        /* Modal de edición simple */
+        .deuda-total {
+            font-weight: 600;
+            color: var(--danger);
+        }
+
+        /* Modal de edición */
         .modal-overlay {
             display: none;
             position: fixed;
@@ -206,14 +225,15 @@
             padding: 24px;
             border-radius: 16px;
             width: 90%;
-            max-width: 360px;
+            max-width: 380px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.3);
         }
         .modal h4 {
             margin-bottom: 12px;
             font-size: 18px;
         }
-        .modal input {
+        .modal input,
+        .modal select {
             width: 100%;
             padding: 10px 12px;
             border: 1px solid var(--border);
@@ -244,8 +264,6 @@
             background: #ccc;
             color: #333;
         }
-        .modal .row .guardar:active,
-        .modal .row .cancelar:active { opacity: 0.8; }
     </style>
 </head>
 <body>
@@ -294,30 +312,61 @@
             </div>
         </div>
 
-        <!-- ============ NUEVO: ADMINISTRACIÓN DE SUBCATEGORÍAS ============ -->
+        <!-- ============ TARJETAS DE CRÉDITO ============ -->
         <div class="config-card">
-            <h3>
-                📋 Subcategorías
-                <button onclick="reiniciarSubcategorias()" style="font-size:12px; background:#f9a825;">↻ Restaurar</button>
-            </h3>
+            <h3>💳 Tarjetas de Crédito</h3>
             
-            <!-- Formulario para agregar nueva -->
-            <div class="sub-form">
-                <select id="subCategoriaSelect">
-                    <option value="INGRESOS">💰 Ingresos</option>
+            <!-- Formulario para agregar tarjeta -->
+            <div class="form-row">
+                <input type="text" id="tarjetaNombre" placeholder="Nombre (ej: Nu, BBVA)">
+            </div>
+            <div class="form-row">
+                <input type="number" id="tarjetaCorte" placeholder="Día de corte (ej: 4)" min="1" max="31">
+                <input type="number" id="tarjetaPago" placeholder="Día límite de pago (ej: 25)" min="1" max="31">
+            </div>
+            <div class="form-row">
+                <input type="number" id="tarjetaDeuda" placeholder="Deuda actual (opcional)" step="0.01">
+            </div>
+            <button class="btn-agregar" onclick="agregarTarjeta()">➕ Agregar Tarjeta</button>
+
+            <!-- Lista de tarjetas -->
+            <div class="lista-items" id="listaTarjetas">
+                <div class="vacio">No hay tarjetas registradas</div>
+            </div>
+        </div>
+
+        <!-- ============ GASTOS FIJOS ============ -->
+        <div class="config-card">
+            <h3>📋 Gastos Fijos / Suscripciones</h3>
+            
+            <!-- Formulario para agregar gasto fijo -->
+            <div class="form-row">
+                <input type="text" id="gastoNombre" placeholder="Nombre (ej: Renta, Netflix)">
+            </div>
+            <div class="form-row">
+                <input type="number" id="gastoMonto" placeholder="Monto" step="0.01">
+                <input type="number" id="gastoDia" placeholder="Día de pago (ej: 5)" min="1" max="31">
+            </div>
+            <div class="form-row">
+                <select id="gastoCategoria">
                     <option value="GASTOS_ESENCIALES">🏠 Gastos Esenciales</option>
                     <option value="GASTOS_DISCRECIONALES">🎮 Gastos Discrecionales</option>
                     <option value="PAGO_DEUDAS">💳 Pago Deudas</option>
                     <option value="AHORROS">🏦 Ahorros</option>
-                    <option value="INVERSIONES">📈 Inversiones</option>
                 </select>
-                <input type="text" id="subNombreInput" placeholder="Nombre de la subcategoría">
-                <button onclick="agregarSubcategoria()">➕ Agregar</button>
+                <select id="gastoFrecuencia">
+                    <option value="mensual">📅 Mensual</option>
+                    <option value="bimestral">📅 Bimestral</option>
+                    <option value="trimestral">📅 Trimestral</option>
+                    <option value="semestral">📅 Semestral</option>
+                    <option value="anual">📅 Anual</option>
+                </select>
             </div>
+            <button class="btn-agregar" onclick="agregarGastoFijo()">➕ Agregar Gasto Fijo</button>
 
-            <!-- Lista de subcategorías -->
-            <div class="sub-lista" id="subLista">
-                <div class="vacio">Cargando...</div>
+            <!-- Lista de gastos fijos -->
+            <div class="lista-items" id="listaGastosFijos">
+                <div class="vacio">No hay gastos fijos registrados</div>
             </div>
         </div>
 
@@ -339,24 +388,22 @@
             </div>
         </div>
 
-        <!-- Guardar -->
         <button class="btn-success" onclick="guardarConfiguracion()">💾 Guardar Configuración</button>
 
         <div class="version">
-            Presupuesto PWA v2.0
+            Presupuesto PWA v2.5
         </div>
     </div>
 
-    <!-- Modal para editar subcategoría -->
-    <div class="modal-overlay" id="editSubModal">
+    <!-- Modal de edición -->
+    <div class="modal-overlay" id="editModal">
         <div class="modal">
-            <h4>✏️ Editar subcategoría</h4>
-            <input type="text" id="editSubNombre" placeholder="Nuevo nombre">
+            <h4 id="editModalTitle">✏️ Editar</h4>
+            <div id="editModalContent"></div>
             <div class="row">
-                <button class="guardar" onclick="guardarEdicionSub()">💾 Guardar</button>
+                <button class="guardar" onclick="guardarEdicion()">💾 Guardar</button>
                 <button class="cancelar" onclick="cerrarModal()">❌ Cancelar</button>
             </div>
-            <input type="hidden" id="editSubId">
         </div>
     </div>
 
@@ -370,15 +417,22 @@
 
     <script src="app.js"></script>
     <script>
-        let subcategorias = [];
+        let tarjetas = [];
+        let gastosFijos = [];
         let editandoId = null;
+        let editandoTipo = null; // 'tarjeta' o 'gasto'
 
         document.addEventListener('DOMContentLoaded', async () => {
             await window.app.abrirDB();
             await cargarConfiguracion();
-            await cargarSubcategorias();
-            await window.app.inicializarSubcategorias(); // Si no hay, crea las default
-            await cargarSubcategorias();
+            await cargarTarjetas();
+            await cargarGastosFijos();
+            await window.app.inicializarSubcategorias();
+            
+            // Verificar recordatorios al cargar
+            setTimeout(async () => {
+                await window.app.verificarRecordatorios();
+            }, 3000);
         });
 
         // ============ CONFIGURACIÓN ============
@@ -419,153 +473,276 @@
             }
         }
 
-        // ============ SUBCATEGORÍAS ============
-        async function cargarSubcategorias() {
-            subcategorias = await window.app.obtenerSubcategorias();
-            renderizarSubcategorias();
+        // ============ TARJETAS ============
+        async function cargarTarjetas() {
+            tarjetas = await window.app.obtenerTarjetas();
+            renderizarTarjetas();
         }
 
-        function renderizarSubcategorias() {
-            const container = document.getElementById('subLista');
+        function renderizarTarjetas() {
+            const container = document.getElementById('listaTarjetas');
             
-            if (subcategorias.length === 0) {
-                container.innerHTML = '<div class="vacio">No hay subcategorías. Agrega una arriba.</div>';
+            if (tarjetas.length === 0) {
+                container.innerHTML = '<div class="vacio">No hay tarjetas registradas</div>';
                 return;
             }
 
-            // Agrupar por categoría
-            const categorias = {};
-            subcategorias.forEach(s => {
-                if (!categorias[s.categoria]) categorias[s.categoria] = [];
-                categorias[s.categoria].push(s);
-            });
+            let html = '';
+            const moneda = localStorage.getItem('moneda') || '$';
+            
+            for (const t of tarjetas) {
+                html += `
+                    <div class="item">
+                        <div class="info">
+                            <span class="tag tarjeta">💳</span>
+                            <strong>${t.nombre}</strong>
+                            <span>Corte: ${t.diaCorte}</span>
+                            <span>Pago: ${t.diaPago}</span>
+                            <span class="deuda-total">Deuda: ${window.app.formatearMoneda(t.deudaActual || 0, moneda)}</span>
+                        </div>
+                        <span class="acciones">
+                            <button class="editar" onclick="editarTarjeta(${t.id})">✏️</button>
+                            <button class="eliminar" onclick="eliminarTarjeta(${t.id})">🗑️</button>
+                        </span>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
+        }
+
+        async function agregarTarjeta() {
+            const nombre = document.getElementById('tarjetaNombre').value.trim();
+            const diaCorte = parseInt(document.getElementById('tarjetaCorte').value);
+            const diaPago = parseInt(document.getElementById('tarjetaPago').value);
+            const deudaActual = parseFloat(document.getElementById('tarjetaDeuda').value) || 0;
+
+            if (!nombre) { alert('Ingresa el nombre de la tarjeta'); return; }
+            if (!diaCorte || diaCorte < 1 || diaCorte > 31) { alert('Ingresa un día de corte válido (1-31)'); return; }
+            if (!diaPago || diaPago < 1 || diaPago > 31) { alert('Ingresa un día de pago válido (1-31)'); return; }
+
+            await window.app.guardarTarjeta({ nombre, diaCorte, diaPago, deudaActual });
+            
+            document.getElementById('tarjetaNombre').value = '';
+            document.getElementById('tarjetaCorte').value = '';
+            document.getElementById('tarjetaPago').value = '';
+            document.getElementById('tarjetaDeuda').value = '';
+            
+            await cargarTarjetas();
+            alert('✅ Tarjeta agregada correctamente');
+        }
+
+        function editarTarjeta(id) {
+            const tarjeta = tarjetas.find(t => t.id === id);
+            if (!tarjeta) return;
+
+            editandoId = id;
+            editandoTipo = 'tarjeta';
+            
+            document.getElementById('editModalTitle').textContent = '✏️ Editar Tarjeta';
+            document.getElementById('editModalContent').innerHTML = `
+                <input type="text" id="editNombre" value="${tarjeta.nombre}" placeholder="Nombre">
+                <div class="form-row">
+                    <input type="number" id="editCorte" value="${tarjeta.diaCorte}" placeholder="Día de corte" min="1" max="31">
+                    <input type="number" id="editPago" value="${tarjeta.diaPago}" placeholder="Día de pago" min="1" max="31">
+                </div>
+                <input type="number" id="editDeuda" value="${tarjeta.deudaActual || 0}" placeholder="Deuda actual" step="0.01">
+            `;
+            document.getElementById('editModal').classList.add('active');
+        }
+
+        async function guardarEdicion() {
+            if (editandoTipo === 'tarjeta') {
+                const nombre = document.getElementById('editNombre').value.trim();
+                const diaCorte = parseInt(document.getElementById('editCorte').value);
+                const diaPago = parseInt(document.getElementById('editPago').value);
+                const deudaActual = parseFloat(document.getElementById('editDeuda').value) || 0;
+
+                if (!nombre) { alert('Ingresa el nombre'); return; }
+                if (!diaCorte || diaCorte < 1 || diaCorte > 31) { alert('Día de corte válido (1-31)'); return; }
+                if (!diaPago || diaPago < 1 || diaPago > 31) { alert('Día de pago válido (1-31)'); return; }
+
+                await window.app.guardarTarjeta({ id: editandoId, nombre, diaCorte, diaPago, deudaActual });
+                await cargarTarjetas();
+                cerrarModal();
+                alert('✅ Tarjeta actualizada');
+            }
+        }
+
+        async function eliminarTarjeta(id) {
+            const tarjeta = tarjetas.find(t => t.id === id);
+            if (!confirm(`¿Eliminar la tarjeta "${tarjeta.nombre}"?`)) return;
+            
+            await window.app.eliminarTarjeta(id);
+            await cargarTarjetas();
+            alert('🗑️ Tarjeta eliminada');
+        }
+
+        // ============ GASTOS FIJOS ============
+        async function cargarGastosFijos() {
+            gastosFijos = await window.app.obtenerGastosFijos();
+            renderizarGastosFijos();
+        }
+
+        function renderizarGastosFijos() {
+            const container = document.getElementById('listaGastosFijos');
+            
+            if (gastosFijos.length === 0) {
+                container.innerHTML = '<div class="vacio">No hay gastos fijos registrados</div>';
+                return;
+            }
 
             let html = '';
+            const moneda = localStorage.getItem('moneda') || '$';
             const emojis = {
-                'INGRESOS': '💰',
                 'GASTOS_ESENCIALES': '🏠',
                 'GASTOS_DISCRECIONALES': '🎮',
                 'PAGO_DEUDAS': '💳',
                 'AHORROS': '🏦',
                 'INVERSIONES': '📈'
             };
-            const nombres = {
-                'INGRESOS': 'Ingresos',
-                'GASTOS_ESENCIALES': 'Gastos Esenciales',
-                'GASTOS_DISCRECIONALES': 'Gastos Discrecionales',
-                'PAGO_DEUDAS': 'Pago Deudas',
-                'AHORROS': 'Ahorros',
-                'INVERSIONES': 'Inversiones'
+            const frecuencias = {
+                'mensual': 'Cada mes',
+                'bimestral': 'Cada 2 meses',
+                'trimestral': 'Cada 3 meses',
+                'semestral': 'Cada 6 meses',
+                'anual': 'Cada año'
             };
 
-            for (const cat in categorias) {
-                html += `<div style="font-weight:600; font-size:13px; color:#999; margin-top:8px; border-bottom:1px solid var(--border); padding-bottom:4px;">${emojis[cat] || '📌'} ${nombres[cat] || cat}</div>`;
-                categorias[cat].forEach(s => {
-                    html += `
-                        <div class="sub-item">
-                            <span>${s.nombre}</span>
-                            <span class="acciones">
-                                <button class="editar" onclick="abrirModalEditar(${s.id}, '${s.nombre}')">✏️</button>
-                                <button class="eliminar" onclick="eliminarSubcategoria(${s.id})">🗑️</button>
-                            </span>
+            for (const g of gastosFijos) {
+                html += `
+                    <div class="item">
+                        <div class="info">
+                            <span class="tag gasto">${emojis[g.categoria] || '📌'}</span>
+                            <strong>${g.nombre}</strong>
+                            <span>${window.app.formatearMoneda(g.monto, moneda)}</span>
+                            <span>Día ${g.diaPago}</span>
+                            <span style="font-size:11px; color:#999;">${frecuencias[g.frecuencia] || g.frecuencia}</span>
                         </div>
-                    `;
-                });
+                        <span class="acciones">
+                            <button class="editar" onclick="editarGastoFijo(${g.id})">✏️</button>
+                            <button class="eliminar" onclick="eliminarGastoFijo(${g.id})">🗑️</button>
+                        </span>
+                    </div>
+                `;
             }
 
             container.innerHTML = html;
         }
 
-        async function agregarSubcategoria() {
-            const categoria = document.getElementById('subCategoriaSelect').value;
-            const nombre = document.getElementById('subNombreInput').value.trim();
+        async function agregarGastoFijo() {
+            const nombre = document.getElementById('gastoNombre').value.trim();
+            const monto = parseFloat(document.getElementById('gastoMonto').value);
+            const diaPago = parseInt(document.getElementById('gastoDia').value);
+            const categoria = document.getElementById('gastoCategoria').value;
+            const frecuencia = document.getElementById('gastoFrecuencia').value;
+
+            if (!nombre) { alert('Ingresa el nombre del gasto'); return; }
+            if (!monto || monto <= 0) { alert('Ingresa un monto válido'); return; }
+            if (!diaPago || diaPago < 1 || diaPago > 31) { alert('Ingresa un día de pago válido (1-31)'); return; }
+
+            await window.app.guardarGastoFijo({ nombre, monto, categoria, subcategoria: nombre, diaPago, frecuencia });
             
-            if (!nombre) {
-                alert('Por favor ingresa un nombre para la subcategoría');
-                return;
-            }
-
-            // Verificar si ya existe
-            const existe = subcategorias.some(s => s.nombre.toLowerCase() === nombre.toLowerCase());
-            if (existe) {
-                alert('⚠️ Esta subcategoría ya existe');
-                return;
-            }
-
-            await window.app.guardarSubcategoria(categoria, nombre, 0);
-            document.getElementById('subNombreInput').value = '';
-            await cargarSubcategorias();
-            alert('✅ Subcategoría agregada correctamente');
+            document.getElementById('gastoNombre').value = '';
+            document.getElementById('gastoMonto').value = '';
+            document.getElementById('gastoDia').value = '';
+            
+            await cargarGastosFijos();
+            alert('✅ Gasto fijo agregado correctamente');
         }
 
-        function abrirModalEditar(id, nombreActual) {
+        function editarGastoFijo(id) {
+            const gasto = gastosFijos.find(g => g.id === id);
+            if (!gasto) return;
+
             editandoId = id;
-            document.getElementById('editSubId').value = id;
-            document.getElementById('editSubNombre').value = nombreActual;
-            document.getElementById('editSubModal').classList.add('active');
+            editandoTipo = 'gasto';
+            
+            document.getElementById('editModalTitle').textContent = '✏️ Editar Gasto Fijo';
+            document.getElementById('editModalContent').innerHTML = `
+                <input type="text" id="editNombreGasto" value="${gasto.nombre}" placeholder="Nombre">
+                <div class="form-row">
+                    <input type="number" id="editMontoGasto" value="${gasto.monto}" placeholder="Monto" step="0.01">
+                    <input type="number" id="editDiaGasto" value="${gasto.diaPago}" placeholder="Día de pago" min="1" max="31">
+                </div>
+                <div class="form-row">
+                    <select id="editCategoriaGasto">
+                        <option value="GASTOS_ESENCIALES" ${gasto.categoria === 'GASTOS_ESENCIALES' ? 'selected' : ''}>🏠 Gastos Esenciales</option>
+                        <option value="GASTOS_DISCRECIONALES" ${gasto.categoria === 'GASTOS_DISCRECIONALES' ? 'selected' : ''}>🎮 Gastos Discrecionales</option>
+                        <option value="PAGO_DEUDAS" ${gasto.categoria === 'PAGO_DEUDAS' ? 'selected' : ''}>💳 Pago Deudas</option>
+                        <option value="AHORROS" ${gasto.categoria === 'AHORROS' ? 'selected' : ''}>🏦 Ahorros</option>
+                    </select>
+                    <select id="editFrecuenciaGasto">
+                        <option value="mensual" ${gasto.frecuencia === 'mensual' ? 'selected' : ''}>📅 Mensual</option>
+                        <option value="bimestral" ${gasto.frecuencia === 'bimestral' ? 'selected' : ''}>📅 Bimestral</option>
+                        <option value="trimestral" ${gasto.frecuencia === 'trimestral' ? 'selected' : ''}>📅 Trimestral</option>
+                        <option value="semestral" ${gasto.frecuencia === 'semestral' ? 'selected' : ''}>📅 Semestral</option>
+                        <option value="anual" ${gasto.frecuencia === 'anual' ? 'selected' : ''}>📅 Anual</option>
+                    </select>
+                </div>
+            `;
+            document.getElementById('editModal').classList.add('active');
         }
 
-        function cerrarModal() {
-            document.getElementById('editSubModal').classList.remove('active');
-            editandoId = null;
-        }
+        async function guardarEdicionGasto() {
+            const nombre = document.getElementById('editNombreGasto').value.trim();
+            const monto = parseFloat(document.getElementById('editMontoGasto').value);
+            const diaPago = parseInt(document.getElementById('editDiaGasto').value);
+            const categoria = document.getElementById('editCategoriaGasto').value;
+            const frecuencia = document.getElementById('editFrecuenciaGasto').value;
 
-        async function guardarEdicionSub() {
-            const id = parseInt(document.getElementById('editSubId').value);
-            const nuevoNombre = document.getElementById('editSubNombre').value.trim();
-            
-            if (!nuevoNombre) {
-                alert('El nombre no puede estar vacío');
-                return;
-            }
+            if (!nombre) { alert('Ingresa el nombre'); return; }
+            if (!monto || monto <= 0) { alert('Ingresa un monto válido'); return; }
+            if (!diaPago || diaPago < 1 || diaPago > 31) { alert('Día de pago válido (1-31)'); return; }
 
-            const item = subcategorias.find(s => s.id === id);
-            if (!item) return;
-
-            // Verificar que no exista otra con el mismo nombre
-            const existe = subcategorias.some(s => s.id !== id && s.nombre.toLowerCase() === nuevoNombre.toLowerCase());
-            if (existe) {
-                alert('⚠️ Ya existe una subcategoría con ese nombre');
-                return;
-            }
-
-            // Eliminar la antigua y crear la nueva
-            await window.app.eliminarSubcategoria(id);
-            await window.app.guardarSubcategoria(item.categoria, nuevoNombre, item.monto || 0);
-            
+            await window.app.guardarGastoFijo({ id: editandoId, nombre, monto, categoria, subcategoria: nombre, diaPago, frecuencia });
+            await cargarGastosFijos();
             cerrarModal();
-            await cargarSubcategorias();
-            alert('✅ Subcategoría actualizada correctamente');
+            alert('✅ Gasto fijo actualizado');
         }
 
-        async function eliminarSubcategoria(id) {
-            const item = subcategorias.find(s => s.id === id);
-            if (!item) return;
+        async function eliminarGastoFijo(id) {
+            const gasto = gastosFijos.find(g => g.id === id);
+            if (!confirm(`¿Eliminar el gasto fijo "${gasto.nombre}"?`)) return;
             
-            if (!confirm(`¿Eliminar la subcategoría "${item.nombre}"? Esto eliminará también su presupuesto asociado.`)) return;
-            
-            await window.app.eliminarSubcategoria(id);
-            await cargarSubcategorias();
-            alert('🗑️ Subcategoría eliminada');
+            await window.app.eliminarGastoFijo(id);
+            await cargarGastosFijos();
+            alert('🗑️ Gasto fijo eliminado');
         }
 
-        async function reiniciarSubcategorias() {
-            if (!confirm('⚠️ Esto restaurará todas las subcategorías a los valores predeterminados. ¿Continuar?')) return;
-            
-            // Eliminar todas las subcategorías existentes
-            for (const s of subcategorias) {
-                await window.app.eliminarSubcategoria(s.id);
+        // ============ MODAL ============
+        function cerrarModal() {
+            document.getElementById('editModal').classList.remove('active');
+            editandoId = null;
+            editandoTipo = null;
+        }
+
+        function guardarEdicion() {
+            if (editandoTipo === 'tarjeta') {
+                // El código está en la función guardarEdicion de tarjeta
+                // Pero lo redirigimos
+                const nombre = document.getElementById('editNombre').value.trim();
+                const diaCorte = parseInt(document.getElementById('editCorte').value);
+                const diaPago = parseInt(document.getElementById('editPago').value);
+                const deudaActual = parseFloat(document.getElementById('editDeuda').value) || 0;
+
+                if (!nombre) { alert('Ingresa el nombre'); return; }
+                if (!diaCorte || diaCorte < 1 || diaCorte > 31) { alert('Día de corte válido (1-31)'); return; }
+                if (!diaPago || diaPago < 1 || diaPago > 31) { alert('Día de pago válido (1-31)'); return; }
+
+                window.app.guardarTarjeta({ id: editandoId, nombre, diaCorte, diaPago, deudaActual }).then(() => {
+                    cargarTarjetas();
+                    cerrarModal();
+                    alert('✅ Tarjeta actualizada');
+                });
+            } else if (editandoTipo === 'gasto') {
+                guardarEdicionGasto();
             }
-            
-            // Inicializar con las predeterminadas
-            await window.app.inicializarSubcategorias();
-            await cargarSubcategorias();
-            alert('✅ Subcategorías restauradas correctamente');
         }
 
         // ============ DATOS ============
         async function exportarDatos() {
-            const tx = window.app.db.transaction(['presupuesto', 'transacciones', 'patrimonio', 'subcategorias'], 'readonly');
+            const tx = window.app.db.transaction(['presupuesto', 'transacciones', 'patrimonio', 'subcategorias', 'tarjetas', 'gastosFijos'], 'readonly');
             
             const presupuesto = await new Promise(resolve => {
                 const req = tx.objectStore('presupuesto').getAll();
@@ -587,7 +764,17 @@
                 req.onsuccess = () => resolve(req.result);
             });
 
-            const data = { presupuesto, transacciones, patrimonio, subcategorias };
+            const tarjetas = await new Promise(resolve => {
+                const req = tx.objectStore('tarjetas').getAll();
+                req.onsuccess = () => resolve(req.result);
+            });
+
+            const gastosFijos = await new Promise(resolve => {
+                const req = tx.objectStore('gastosFijos').getAll();
+                req.onsuccess = () => resolve(req.result);
+            });
+
+            const data = { presupuesto, transacciones, patrimonio, subcategorias, tarjetas, gastosFijos };
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -608,25 +795,21 @@
                     
                     if (!confirm('⚠️ Esto sobrescribirá todos tus datos actuales. ¿Continuar?')) return;
 
-                    const tx = window.app.db.transaction(['presupuesto', 'transacciones', 'patrimonio', 'subcategorias'], 'readwrite');
+                    const tx = window.app.db.transaction(['presupuesto', 'transacciones', 'patrimonio', 'subcategorias', 'tarjetas', 'gastosFijos'], 'readwrite');
                     
                     tx.objectStore('presupuesto').clear();
                     tx.objectStore('transacciones').clear();
                     tx.objectStore('patrimonio').clear();
                     tx.objectStore('subcategorias').clear();
+                    tx.objectStore('tarjetas').clear();
+                    tx.objectStore('gastosFijos').clear();
 
-                    if (data.presupuesto) {
-                        data.presupuesto.forEach(item => tx.objectStore('presupuesto').add(item));
-                    }
-                    if (data.transacciones) {
-                        data.transacciones.forEach(item => tx.objectStore('transacciones').add(item));
-                    }
-                    if (data.patrimonio) {
-                        data.patrimonio.forEach(item => tx.objectStore('patrimonio').add(item));
-                    }
-                    if (data.subcategorias) {
-                        data.subcategorias.forEach(item => tx.objectStore('subcategorias').add(item));
-                    }
+                    if (data.presupuesto) data.presupuesto.forEach(item => tx.objectStore('presupuesto').add(item));
+                    if (data.transacciones) data.transacciones.forEach(item => tx.objectStore('transacciones').add(item));
+                    if (data.patrimonio) data.patrimonio.forEach(item => tx.objectStore('patrimonio').add(item));
+                    if (data.subcategorias) data.subcategorias.forEach(item => tx.objectStore('subcategorias').add(item));
+                    if (data.tarjetas) data.tarjetas.forEach(item => tx.objectStore('tarjetas').add(item));
+                    if (data.gastosFijos) data.gastosFijos.forEach(item => tx.objectStore('gastosFijos').add(item));
 
                     alert('✅ Datos importados correctamente');
                     location.reload();
@@ -638,14 +821,16 @@
         }
 
         async function eliminarTodosLosDatos() {
-            if (!confirm('⚠️ ¿Estás SEGURO? Esto eliminará TODOS tus datos (presupuesto, transacciones, patrimonio y subcategorías). Esta acción no se puede deshacer.')) return;
+            if (!confirm('⚠️ ¿Estás SEGURO? Esto eliminará TODOS tus datos. Esta acción no se puede deshacer.')) return;
             if (!confirm('⚠️ Última advertencia: ¿Realmente quieres eliminar todo?')) return;
 
-            const tx = window.app.db.transaction(['presupuesto', 'transacciones', 'patrimonio', 'subcategorias'], 'readwrite');
+            const tx = window.app.db.transaction(['presupuesto', 'transacciones', 'patrimonio', 'subcategorias', 'tarjetas', 'gastosFijos'], 'readwrite');
             tx.objectStore('presupuesto').clear();
             tx.objectStore('transacciones').clear();
             tx.objectStore('patrimonio').clear();
             tx.objectStore('subcategorias').clear();
+            tx.objectStore('tarjetas').clear();
+            tx.objectStore('gastosFijos').clear();
 
             alert('🗑️ Todos los datos han sido eliminados');
             location.reload();
