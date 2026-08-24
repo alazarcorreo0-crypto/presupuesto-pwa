@@ -1,840 +1,271 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <link rel="stylesheet" href="styles.css">
-    <title>Configuración</title>
-    <style>
-        .config-container { padding: 16px; }
-        .config-card {
-            background: var(--card-bg);
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 12px;
-            box-shadow: var(--shadow);
+<script>
+    let tarjetas = [];
+    let gastosFijos = [];
+    let editandoId = null;
+    let editandoTipo = null;
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        await window.app.abrirDB();
+        await cargarConfiguracion();
+        await cargarTarjetas();
+        await cargarGastosFijos();
+        await window.app.inicializarSubcategorias();
+        
+        setTimeout(async () => {
+            await window.app.verificarRecordatorios();
+        }, 3000);
+    });
+
+    // ============ CONFIGURACIÓN ============
+    async function cargarConfiguracion() {
+        const moneda = await window.app.obtenerConfiguracion('moneda');
+        const anio = await window.app.obtenerConfiguracion('anio');
+        
+        if (moneda) document.getElementById('monedaSelect').value = moneda;
+        if (anio) document.getElementById('anioInput').value = anio;
+        else document.getElementById('anioInput').value = new Date().getFullYear();
+
+        const tema = localStorage.getItem('tema');
+        if (tema === 'oscuro') {
+            document.getElementById('darkModeToggle').checked = true;
+            document.body.classList.add('dark');
         }
-        .config-card h3 {
-            font-size: 16px;
-            margin-bottom: 12px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+    }
+
+    async function guardarConfiguracion() {
+        const moneda = document.getElementById('monedaSelect').value;
+        const anio = parseInt(document.getElementById('anioInput').value);
+
+        await window.app.guardarConfiguracion('moneda', moneda);
+        await window.app.guardarConfiguracion('anio', anio);
+        localStorage.setItem('moneda', moneda);
+
+        alert('✅ Configuración guardada correctamente');
+    }
+
+    function toggleDarkMode() {
+        const checked = document.getElementById('darkModeToggle').checked;
+        if (checked) {
+            document.body.classList.add('dark');
+            localStorage.setItem('tema', 'oscuro');
+        } else {
+            document.body.classList.remove('dark');
+            localStorage.setItem('tema', 'claro');
         }
-        .config-card h3 button {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 4px 12px;
-            border-radius: 6px;
-            font-size: 13px;
-            cursor: pointer;
-        }
-        .config-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid var(--border);
-            flex-wrap: wrap;
-            gap: 6px;
-        }
-        .config-item:last-child { border-bottom: none; }
-        .config-item .label { font-size: 14px; color: var(--text); }
-        .config-item select,
-        .config-item input {
-            padding: 6px 12px;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            font-size: 14px;
-            background: var(--bg);
-            color: var(--text);
-            flex: 1;
-            min-width: 80px;
-        }
-        .config-item .acciones button {
-            background: none;
-            border: none;
-            font-size: 16px;
-            cursor: pointer;
-            padding: 2px 6px;
-        }
-        .config-item .acciones .editar { color: var(--info); }
-        .config-item .acciones .eliminar { color: var(--danger); }
-        .btn-danger {
-            background: var(--danger);
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            font-size: 14px;
-            cursor: pointer;
-        }
-        .btn-success {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-size: 16px;
-            cursor: pointer;
-            width: 100%;
-            margin-top: 8px;
-        }
-        .btn-success:active { opacity: 0.8; }
-        .version {
-            text-align: center;
-            color: #bbb;
-            font-size: 12px;
-            margin-top: 20px;
-        }
-        .toggle-label {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            cursor: pointer;
-        }
-        .toggle-label input[type="checkbox"] {
-            width: 40px;
-            height: 22px;
-            border-radius: 12px;
-            appearance: none;
-            background: #ccc;
-            position: relative;
-            transition: 0.3s;
-            cursor: pointer;
-        }
-        .toggle-label input[type="checkbox"]:checked {
-            background: var(--primary);
-        }
-        .toggle-label input[type="checkbox"]::before {
-            content: '';
-            position: absolute;
-            width: 18px;
-            height: 18px;
-            background: white;
-            border-radius: 50%;
-            top: 2px;
-            left: 2px;
-            transition: 0.3s;
-        }
-        .toggle-label input[type="checkbox"]:checked::before {
-            left: 20px;
+    }
+
+    // ============ TARJETAS ============
+    async function cargarTarjetas() {
+        tarjetas = await window.app.obtenerTarjetas();
+        renderizarTarjetas();
+    }
+
+    function renderizarTarjetas() {
+        const container = document.getElementById('listaTarjetas');
+        if (tarjetas.length === 0) {
+            container.innerHTML = '<div class="vacio">No hay tarjetas registradas</div>';
+            return;
         }
 
-        /* Formulario de tarjetas */
-        .form-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-            margin-bottom: 8px;
-        }
-        .form-row input,
-        .form-row select {
-            padding: 8px 10px;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            font-size: 14px;
-            background: var(--bg);
-            color: var(--text);
-            width: 100%;
-        }
-        .form-row.full {
-            grid-template-columns: 1fr;
-        }
-        .btn-agregar {
-            padding: 8px 16px;
-            background: var(--primary);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            cursor: pointer;
-            width: 100%;
-        }
-        .btn-agregar:active { opacity: 0.8; }
-
-        .lista-items {
-            max-height: 200px;
-            overflow-y: auto;
-            margin-top: 8px;
-        }
-        .lista-items .item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 6px 0;
-            border-bottom: 1px solid var(--border);
-            font-size: 14px;
-            flex-wrap: wrap;
-            gap: 4px;
-        }
-        .lista-items .item .info {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        .lista-items .item .tag {
-            font-size: 10px;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 10px;
-        }
-        .lista-items .item .tag.tarjeta { background: #1565c0; }
-        .lista-items .item .tag.gasto { background: #f9a825; }
-        .lista-items .item .acciones button {
-            background: none;
-            border: none;
-            font-size: 14px;
-            cursor: pointer;
-            padding: 2px 4px;
-        }
-        .lista-items .item .acciones .editar { color: var(--info); }
-        .lista-items .item .acciones .eliminar { color: var(--danger); }
-        .lista-items .vacio {
-            text-align: center;
-            color: #999;
-            padding: 12px 0;
-            font-size: 14px;
-        }
-
-        .deuda-total {
-            font-weight: 600;
-            color: var(--danger);
-        }
-
-        /* Modal de edición */
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.5);
-            z-index: 999;
-            justify-content: center;
-            align-items: center;
-        }
-        .modal-overlay.active {
-            display: flex;
-        }
-        .modal {
-            background: var(--card-bg);
-            padding: 24px;
-            border-radius: 16px;
-            width: 90%;
-            max-width: 380px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-        }
-        .modal h4 {
-            margin-bottom: 12px;
-            font-size: 18px;
-        }
-        .modal input,
-        .modal select {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            font-size: 16px;
-            margin-bottom: 10px;
-            background: var(--bg);
-            color: var(--text);
-        }
-        .modal .row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-        }
-        .modal .row button {
-            padding: 10px;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        .modal .row .guardar {
-            background: var(--primary);
-            color: white;
-        }
-        .modal .row .cancelar {
-            background: #ccc;
-            color: #333;
-        }
-    </style>
-</head>
-<body>
-    <header class="header">
-        <a href="index.html" style="color:white; text-decoration:none; font-size:20px;">←</a>
-        <h1>⚙️ Configuración</h1>
-        <span class="year">Ajustes</span>
-    </header>
-
-    <div class="config-container">
-        <!-- Moneda -->
-        <div class="config-card">
-            <h3>💰 Moneda</h3>
-            <div class="config-item">
-                <span class="label">Símbolo de moneda</span>
-                <select id="monedaSelect">
-                    <option value="$">$ (Dólar)</option>
-                    <option value="€">€ (Euro)</option>
-                    <option value="£">£ (Libra)</option>
-                    <option value="MX$">MX$ (Peso Mexicano)</option>
-                    <option value="COP$">COP$ (Peso Colombiano)</option>
-                    <option value="ARS$">ARS$ (Peso Argentino)</option>
-                    <option value="CLP$">CLP$ (Peso Chileno)</option>
-                    <option value="S/.">S/. (Sol Peruano)</option>
-                </select>
-            </div>
-        </div>
-
-        <!-- Año -->
-        <div class="config-card">
-            <h3>📅 Año presupuestal</h3>
-            <div class="config-item">
-                <span class="label">Año actual</span>
-                <input type="number" id="anioInput" min="2020" max="2030">
-            </div>
-        </div>
-
-        <!-- Modo oscuro -->
-        <div class="config-card">
-            <h3>🌓 Modo Oscuro</h3>
-            <div class="config-item">
-                <span class="label">Activar modo oscuro</span>
-                <label class="toggle-label">
-                    <input type="checkbox" id="darkModeToggle" onchange="toggleDarkMode()">
-                </label>
-            </div>
-        </div>
-
-        <!-- ============ TARJETAS DE CRÉDITO ============ -->
-        <div class="config-card">
-            <h3>💳 Tarjetas de Crédito</h3>
-            
-            <!-- Formulario para agregar tarjeta -->
-            <div class="form-row">
-                <input type="text" id="tarjetaNombre" placeholder="Nombre (ej: Nu, BBVA)">
-            </div>
-            <div class="form-row">
-                <input type="number" id="tarjetaCorte" placeholder="Día de corte (ej: 4)" min="1" max="31">
-                <input type="number" id="tarjetaPago" placeholder="Día límite de pago (ej: 25)" min="1" max="31">
-            </div>
-            <div class="form-row">
-                <input type="number" id="tarjetaDeuda" placeholder="Deuda actual (opcional)" step="0.01">
-            </div>
-            <button class="btn-agregar" onclick="agregarTarjeta()">➕ Agregar Tarjeta</button>
-
-            <!-- Lista de tarjetas -->
-            <div class="lista-items" id="listaTarjetas">
-                <div class="vacio">No hay tarjetas registradas</div>
-            </div>
-        </div>
-
-        <!-- ============ GASTOS FIJOS ============ -->
-        <div class="config-card">
-            <h3>📋 Gastos Fijos / Suscripciones</h3>
-            
-            <!-- Formulario para agregar gasto fijo -->
-            <div class="form-row">
-                <input type="text" id="gastoNombre" placeholder="Nombre (ej: Renta, Netflix)">
-            </div>
-            <div class="form-row">
-                <input type="number" id="gastoMonto" placeholder="Monto" step="0.01">
-                <input type="number" id="gastoDia" placeholder="Día de pago (ej: 5)" min="1" max="31">
-            </div>
-            <div class="form-row">
-                <select id="gastoCategoria">
-                    <option value="GASTOS_ESENCIALES">🏠 Gastos Esenciales</option>
-                    <option value="GASTOS_DISCRECIONALES">🎮 Gastos Discrecionales</option>
-                    <option value="PAGO_DEUDAS">💳 Pago Deudas</option>
-                    <option value="AHORROS">🏦 Ahorros</option>
-                </select>
-                <select id="gastoFrecuencia">
-                    <option value="mensual">📅 Mensual</option>
-                    <option value="bimestral">📅 Bimestral</option>
-                    <option value="trimestral">📅 Trimestral</option>
-                    <option value="semestral">📅 Semestral</option>
-                    <option value="anual">📅 Anual</option>
-                </select>
-            </div>
-            <button class="btn-agregar" onclick="agregarGastoFijo()">➕ Agregar Gasto Fijo</button>
-
-            <!-- Lista de gastos fijos -->
-            <div class="lista-items" id="listaGastosFijos">
-                <div class="vacio">No hay gastos fijos registrados</div>
-            </div>
-        </div>
-
-        <!-- Datos -->
-        <div class="config-card">
-            <h3>💾 Datos</h3>
-            <div class="config-item">
-                <span class="label">Exportar datos (JSON)</span>
-                <button onclick="exportarDatos()" style="background:#1565c0; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer;">📤 Exportar</button>
-            </div>
-            <div class="config-item">
-                <span class="label">Importar datos (JSON)</span>
-                <button onclick="document.getElementById('importInput').click()" style="background:#f9a825; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer;">📥 Importar</button>
-                <input type="file" id="importInput" accept=".json" style="display:none;" onchange="importarDatos(event)">
-            </div>
-            <div class="config-item" style="border-bottom: none;">
-                <span class="label" style="color:var(--danger);">Eliminar todos los datos</span>
-                <button class="btn-danger" onclick="eliminarTodosLosDatos()">🗑️ Eliminar</button>
-            </div>
-        </div>
-
-        <button class="btn-success" onclick="guardarConfiguracion()">💾 Guardar Configuración</button>
-
-        <div class="version">
-            Presupuesto PWA v2.5
-        </div>
-    </div>
-
-    <!-- Modal de edición -->
-    <div class="modal-overlay" id="editModal">
-        <div class="modal">
-            <h4 id="editModalTitle">✏️ Editar</h4>
-            <div id="editModalContent"></div>
-            <div class="row">
-                <button class="guardar" onclick="guardarEdicion()">💾 Guardar</button>
-                <button class="cancelar" onclick="cerrarModal()">❌ Cancelar</button>
-            </div>
-        </div>
-    </div>
-
-    <nav class="bottom-nav">
-        <a href="index.html"><span class="icon">🏠</span>Inicio</a>
-        <a href="presupuesto.html"><span class="icon">📋</span>Presupuesto</a>
-        <a href="transacciones.html"><span class="icon">💳</span>Gastos</a>
-        <a href="dashboard.html"><span class="icon">📊</span>Dashboard</a>
-        <a href="configuracion.html" class="active"><span class="icon">⚙️</span>Config</a>
-    </nav>
-
-    <script src="app.js"></script>
-    <script>
-        let tarjetas = [];
-        let gastosFijos = [];
-        let editandoId = null;
-        let editandoTipo = null; // 'tarjeta' o 'gasto'
-
-        document.addEventListener('DOMContentLoaded', async () => {
-            await window.app.abrirDB();
-            await cargarConfiguracion();
-            await cargarTarjetas();
-            await cargarGastosFijos();
-            await window.app.inicializarSubcategorias();
-            
-            // Verificar recordatorios al cargar
-            setTimeout(async () => {
-                await window.app.verificarRecordatorios();
-            }, 3000);
-        });
-
-        // ============ CONFIGURACIÓN ============
-        async function cargarConfiguracion() {
-            const moneda = await window.app.obtenerConfiguracion('moneda');
-            const anio = await window.app.obtenerConfiguracion('anio');
-            
-            if (moneda) document.getElementById('monedaSelect').value = moneda;
-            if (anio) document.getElementById('anioInput').value = anio;
-            else document.getElementById('anioInput').value = new Date().getFullYear();
-
-            const tema = localStorage.getItem('tema');
-            if (tema === 'oscuro') {
-                document.getElementById('darkModeToggle').checked = true;
-                document.body.classList.add('dark');
-            }
-        }
-
-        async function guardarConfiguracion() {
-            const moneda = document.getElementById('monedaSelect').value;
-            const anio = parseInt(document.getElementById('anioInput').value);
-
-            await window.app.guardarConfiguracion('moneda', moneda);
-            await window.app.guardarConfiguracion('anio', anio);
-            localStorage.setItem('moneda', moneda);
-
-            alert('✅ Configuración guardada correctamente');
-        }
-
-        function toggleDarkMode() {
-            const checked = document.getElementById('darkModeToggle').checked;
-            if (checked) {
-                document.body.classList.add('dark');
-                localStorage.setItem('tema', 'oscuro');
-            } else {
-                document.body.classList.remove('dark');
-                localStorage.setItem('tema', 'claro');
-            }
-        }
-
-        // ============ TARJETAS ============
-        async function cargarTarjetas() {
-            tarjetas = await window.app.obtenerTarjetas();
-            renderizarTarjetas();
-        }
-
-        function renderizarTarjetas() {
-            const container = document.getElementById('listaTarjetas');
-            
-            if (tarjetas.length === 0) {
-                container.innerHTML = '<div class="vacio">No hay tarjetas registradas</div>';
-                return;
-            }
-
-            let html = '';
-            const moneda = localStorage.getItem('moneda') || '$';
-            
-            for (const t of tarjetas) {
-                html += `
-                    <div class="item">
-                        <div class="info">
-                            <span class="tag tarjeta">💳</span>
-                            <strong>${t.nombre}</strong>
-                            <span>Corte: ${t.diaCorte}</span>
-                            <span>Pago: ${t.diaPago}</span>
-                            <span class="deuda-total">Deuda: ${window.app.formatearMoneda(t.deudaActual || 0, moneda)}</span>
-                        </div>
-                        <span class="acciones">
-                            <button class="editar" onclick="editarTarjeta(${t.id})">✏️</button>
-                            <button class="eliminar" onclick="eliminarTarjeta(${t.id})">🗑️</button>
-                        </span>
+        let html = '';
+        const moneda = localStorage.getItem('moneda') || '$';
+        for (const t of tarjetas) {
+            html += `
+                <div class="item">
+                    <div class="info">
+                        <span class="tag tarjeta">💳</span>
+                        <strong>${t.nombre}</strong>
+                        <span>Corte: ${t.diaCorte}</span>
+                        <span>Pago: ${t.diaPago}</span>
+                        <span class="deuda-total">Deuda: ${window.app.formatearMoneda(t.deudaActual || 0, moneda)}</span>
                     </div>
-                `;
-            }
-
-            container.innerHTML = html;
-        }
-
-        async function agregarTarjeta() {
-            const nombre = document.getElementById('tarjetaNombre').value.trim();
-            const diaCorte = parseInt(document.getElementById('tarjetaCorte').value);
-            const diaPago = parseInt(document.getElementById('tarjetaPago').value);
-            const deudaActual = parseFloat(document.getElementById('tarjetaDeuda').value) || 0;
-
-            if (!nombre) { alert('Ingresa el nombre de la tarjeta'); return; }
-            if (!diaCorte || diaCorte < 1 || diaCorte > 31) { alert('Ingresa un día de corte válido (1-31)'); return; }
-            if (!diaPago || diaPago < 1 || diaPago > 31) { alert('Ingresa un día de pago válido (1-31)'); return; }
-
-            await window.app.guardarTarjeta({ nombre, diaCorte, diaPago, deudaActual });
-            
-            document.getElementById('tarjetaNombre').value = '';
-            document.getElementById('tarjetaCorte').value = '';
-            document.getElementById('tarjetaPago').value = '';
-            document.getElementById('tarjetaDeuda').value = '';
-            
-            await cargarTarjetas();
-            alert('✅ Tarjeta agregada correctamente');
-        }
-
-        function editarTarjeta(id) {
-            const tarjeta = tarjetas.find(t => t.id === id);
-            if (!tarjeta) return;
-
-            editandoId = id;
-            editandoTipo = 'tarjeta';
-            
-            document.getElementById('editModalTitle').textContent = '✏️ Editar Tarjeta';
-            document.getElementById('editModalContent').innerHTML = `
-                <input type="text" id="editNombre" value="${tarjeta.nombre}" placeholder="Nombre">
-                <div class="form-row">
-                    <input type="number" id="editCorte" value="${tarjeta.diaCorte}" placeholder="Día de corte" min="1" max="31">
-                    <input type="number" id="editPago" value="${tarjeta.diaPago}" placeholder="Día de pago" min="1" max="31">
-                </div>
-                <input type="number" id="editDeuda" value="${tarjeta.deudaActual || 0}" placeholder="Deuda actual" step="0.01">
-            `;
-            document.getElementById('editModal').classList.add('active');
-        }
-
-        async function guardarEdicion() {
-            if (editandoTipo === 'tarjeta') {
-                const nombre = document.getElementById('editNombre').value.trim();
-                const diaCorte = parseInt(document.getElementById('editCorte').value);
-                const diaPago = parseInt(document.getElementById('editPago').value);
-                const deudaActual = parseFloat(document.getElementById('editDeuda').value) || 0;
-
-                if (!nombre) { alert('Ingresa el nombre'); return; }
-                if (!diaCorte || diaCorte < 1 || diaCorte > 31) { alert('Día de corte válido (1-31)'); return; }
-                if (!diaPago || diaPago < 1 || diaPago > 31) { alert('Día de pago válido (1-31)'); return; }
-
-                await window.app.guardarTarjeta({ id: editandoId, nombre, diaCorte, diaPago, deudaActual });
-                await cargarTarjetas();
-                cerrarModal();
-                alert('✅ Tarjeta actualizada');
-            }
-        }
-
-        async function eliminarTarjeta(id) {
-            const tarjeta = tarjetas.find(t => t.id === id);
-            if (!confirm(`¿Eliminar la tarjeta "${tarjeta.nombre}"?`)) return;
-            
-            await window.app.eliminarTarjeta(id);
-            await cargarTarjetas();
-            alert('🗑️ Tarjeta eliminada');
-        }
-
-        // ============ GASTOS FIJOS ============
-        async function cargarGastosFijos() {
-            gastosFijos = await window.app.obtenerGastosFijos();
-            renderizarGastosFijos();
-        }
-
-        function renderizarGastosFijos() {
-            const container = document.getElementById('listaGastosFijos');
-            
-            if (gastosFijos.length === 0) {
-                container.innerHTML = '<div class="vacio">No hay gastos fijos registrados</div>';
-                return;
-            }
-
-            let html = '';
-            const moneda = localStorage.getItem('moneda') || '$';
-            const emojis = {
-                'GASTOS_ESENCIALES': '🏠',
-                'GASTOS_DISCRECIONALES': '🎮',
-                'PAGO_DEUDAS': '💳',
-                'AHORROS': '🏦',
-                'INVERSIONES': '📈'
-            };
-            const frecuencias = {
-                'mensual': 'Cada mes',
-                'bimestral': 'Cada 2 meses',
-                'trimestral': 'Cada 3 meses',
-                'semestral': 'Cada 6 meses',
-                'anual': 'Cada año'
-            };
-
-            for (const g of gastosFijos) {
-                html += `
-                    <div class="item">
-                        <div class="info">
-                            <span class="tag gasto">${emojis[g.categoria] || '📌'}</span>
-                            <strong>${g.nombre}</strong>
-                            <span>${window.app.formatearMoneda(g.monto, moneda)}</span>
-                            <span>Día ${g.diaPago}</span>
-                            <span style="font-size:11px; color:#999;">${frecuencias[g.frecuencia] || g.frecuencia}</span>
-                        </div>
-                        <span class="acciones">
-                            <button class="editar" onclick="editarGastoFijo(${g.id})">✏️</button>
-                            <button class="eliminar" onclick="eliminarGastoFijo(${g.id})">🗑️</button>
-                        </span>
-                    </div>
-                `;
-            }
-
-            container.innerHTML = html;
-        }
-
-        async function agregarGastoFijo() {
-            const nombre = document.getElementById('gastoNombre').value.trim();
-            const monto = parseFloat(document.getElementById('gastoMonto').value);
-            const diaPago = parseInt(document.getElementById('gastoDia').value);
-            const categoria = document.getElementById('gastoCategoria').value;
-            const frecuencia = document.getElementById('gastoFrecuencia').value;
-
-            if (!nombre) { alert('Ingresa el nombre del gasto'); return; }
-            if (!monto || monto <= 0) { alert('Ingresa un monto válido'); return; }
-            if (!diaPago || diaPago < 1 || diaPago > 31) { alert('Ingresa un día de pago válido (1-31)'); return; }
-
-            await window.app.guardarGastoFijo({ nombre, monto, categoria, subcategoria: nombre, diaPago, frecuencia });
-            
-            document.getElementById('gastoNombre').value = '';
-            document.getElementById('gastoMonto').value = '';
-            document.getElementById('gastoDia').value = '';
-            
-            await cargarGastosFijos();
-            alert('✅ Gasto fijo agregado correctamente');
-        }
-
-        function editarGastoFijo(id) {
-            const gasto = gastosFijos.find(g => g.id === id);
-            if (!gasto) return;
-
-            editandoId = id;
-            editandoTipo = 'gasto';
-            
-            document.getElementById('editModalTitle').textContent = '✏️ Editar Gasto Fijo';
-            document.getElementById('editModalContent').innerHTML = `
-                <input type="text" id="editNombreGasto" value="${gasto.nombre}" placeholder="Nombre">
-                <div class="form-row">
-                    <input type="number" id="editMontoGasto" value="${gasto.monto}" placeholder="Monto" step="0.01">
-                    <input type="number" id="editDiaGasto" value="${gasto.diaPago}" placeholder="Día de pago" min="1" max="31">
-                </div>
-                <div class="form-row">
-                    <select id="editCategoriaGasto">
-                        <option value="GASTOS_ESENCIALES" ${gasto.categoria === 'GASTOS_ESENCIALES' ? 'selected' : ''}>🏠 Gastos Esenciales</option>
-                        <option value="GASTOS_DISCRECIONALES" ${gasto.categoria === 'GASTOS_DISCRECIONALES' ? 'selected' : ''}>🎮 Gastos Discrecionales</option>
-                        <option value="PAGO_DEUDAS" ${gasto.categoria === 'PAGO_DEUDAS' ? 'selected' : ''}>💳 Pago Deudas</option>
-                        <option value="AHORROS" ${gasto.categoria === 'AHORROS' ? 'selected' : ''}>🏦 Ahorros</option>
-                    </select>
-                    <select id="editFrecuenciaGasto">
-                        <option value="mensual" ${gasto.frecuencia === 'mensual' ? 'selected' : ''}>📅 Mensual</option>
-                        <option value="bimestral" ${gasto.frecuencia === 'bimestral' ? 'selected' : ''}>📅 Bimestral</option>
-                        <option value="trimestral" ${gasto.frecuencia === 'trimestral' ? 'selected' : ''}>📅 Trimestral</option>
-                        <option value="semestral" ${gasto.frecuencia === 'semestral' ? 'selected' : ''}>📅 Semestral</option>
-                        <option value="anual" ${gasto.frecuencia === 'anual' ? 'selected' : ''}>📅 Anual</option>
-                    </select>
+                    <span class="acciones">
+                        <button class="editar" onclick="editarTarjeta(${t.id})">✏️</button>
+                        <button class="eliminar" onclick="eliminarTarjeta(${t.id})">🗑️</button>
+                    </span>
                 </div>
             `;
-            document.getElementById('editModal').classList.add('active');
+        }
+        container.innerHTML = html;
+    }
+
+    // IMPORTANTE: Esta función debe existir y ser GLOBAL
+    window.agregarTarjeta = async function() {
+        const nombre = document.getElementById('tarjetaNombre').value.trim();
+        const diaCorte = parseInt(document.getElementById('tarjetaCorte').value);
+        const diaPago = parseInt(document.getElementById('tarjetaPago').value);
+        const deudaActual = parseFloat(document.getElementById('tarjetaDeuda').value) || 0;
+
+        if (!nombre) { alert('Ingresa el nombre de la tarjeta'); return; }
+        if (!diaCorte || diaCorte < 1 || diaCorte > 31) { alert('Ingresa un día de corte válido (1-31)'); return; }
+        if (!diaPago || diaPago < 1 || diaPago > 31) { alert('Ingresa un día de pago válido (1-31)'); return; }
+
+        await window.app.guardarTarjeta({ nombre, diaCorte, diaPago, deudaActual });
+        
+        document.getElementById('tarjetaNombre').value = '';
+        document.getElementById('tarjetaCorte').value = '';
+        document.getElementById('tarjetaPago').value = '';
+        document.getElementById('tarjetaDeuda').value = '';
+        
+        await cargarTarjetas();
+        alert('✅ Tarjeta agregada correctamente');
+    };
+
+    // ============ GASTOS FIJOS ============
+    async function cargarGastosFijos() {
+        gastosFijos = await window.app.obtenerGastosFijos();
+        renderizarGastosFijos();
+    }
+
+    function renderizarGastosFijos() {
+        const container = document.getElementById('listaGastosFijos');
+        if (gastosFijos.length === 0) {
+            container.innerHTML = '<div class="vacio">No hay gastos fijos registrados</div>';
+            return;
         }
 
-        async function guardarEdicionGasto() {
-            const nombre = document.getElementById('editNombreGasto').value.trim();
-            const monto = parseFloat(document.getElementById('editMontoGasto').value);
-            const diaPago = parseInt(document.getElementById('editDiaGasto').value);
-            const categoria = document.getElementById('editCategoriaGasto').value;
-            const frecuencia = document.getElementById('editFrecuenciaGasto').value;
+        let html = '';
+        const moneda = localStorage.getItem('moneda') || '$';
+        const emojis = {
+            'GASTOS_ESENCIALES': '🏠',
+            'GASTOS_DISCRECIONALES': '🎮',
+            'PAGO_DEUDAS': '💳',
+            'AHORROS': '🏦'
+        };
+        const frecuencias = {
+            'mensual': 'Cada mes',
+            'bimestral': 'Cada 2 meses',
+            'trimestral': 'Cada 3 meses',
+            'semestral': 'Cada 6 meses',
+            'anual': 'Cada año'
+        };
 
-            if (!nombre) { alert('Ingresa el nombre'); return; }
-            if (!monto || monto <= 0) { alert('Ingresa un monto válido'); return; }
-            if (!diaPago || diaPago < 1 || diaPago > 31) { alert('Día de pago válido (1-31)'); return; }
-
-            await window.app.guardarGastoFijo({ id: editandoId, nombre, monto, categoria, subcategoria: nombre, diaPago, frecuencia });
-            await cargarGastosFijos();
-            cerrarModal();
-            alert('✅ Gasto fijo actualizado');
+        for (const g of gastosFijos) {
+            html += `
+                <div class="item">
+                    <div class="info">
+                        <span class="tag gasto">${emojis[g.categoria] || '📌'}</span>
+                        <strong>${g.nombre}</strong>
+                        <span>${window.app.formatearMoneda(g.monto, moneda)}</span>
+                        <span>Día ${g.diaPago}</span>
+                        <span style="font-size:11px; color:#999;">${frecuencias[g.frecuencia] || g.frecuencia}</span>
+                    </div>
+                    <span class="acciones">
+                        <button class="editar" onclick="editarGastoFijo(${g.id})">✏️</button>
+                        <button class="eliminar" onclick="eliminarGastoFijo(${g.id})">🗑️</button>
+                    </span>
+                </div>
+            `;
         }
+        container.innerHTML = html;
+    }
 
-        async function eliminarGastoFijo(id) {
-            const gasto = gastosFijos.find(g => g.id === id);
-            if (!confirm(`¿Eliminar el gasto fijo "${gasto.nombre}"?`)) return;
-            
-            await window.app.eliminarGastoFijo(id);
-            await cargarGastosFijos();
-            alert('🗑️ Gasto fijo eliminado');
-        }
+    window.agregarGastoFijo = async function() {
+        const nombre = document.getElementById('gastoNombre').value.trim();
+        const monto = parseFloat(document.getElementById('gastoMonto').value);
+        const diaPago = parseInt(document.getElementById('gastoDia').value);
+        const categoria = document.getElementById('gastoCategoria').value;
+        const frecuencia = document.getElementById('gastoFrecuencia').value;
 
-        // ============ MODAL ============
-        function cerrarModal() {
-            document.getElementById('editModal').classList.remove('active');
-            editandoId = null;
-            editandoTipo = null;
-        }
+        if (!nombre) { alert('Ingresa el nombre del gasto'); return; }
+        if (!monto || monto <= 0) { alert('Ingresa un monto válido'); return; }
+        if (!diaPago || diaPago < 1 || diaPago > 31) { alert('Ingresa un día de pago válido (1-31)'); return; }
 
-        function guardarEdicion() {
-            if (editandoTipo === 'tarjeta') {
-                // El código está en la función guardarEdicion de tarjeta
-                // Pero lo redirigimos
-                const nombre = document.getElementById('editNombre').value.trim();
-                const diaCorte = parseInt(document.getElementById('editCorte').value);
-                const diaPago = parseInt(document.getElementById('editPago').value);
-                const deudaActual = parseFloat(document.getElementById('editDeuda').value) || 0;
+        await window.app.guardarGastoFijo({ nombre, monto, categoria, subcategoria: nombre, diaPago, frecuencia });
+        
+        document.getElementById('gastoNombre').value = '';
+        document.getElementById('gastoMonto').value = '';
+        document.getElementById('gastoDia').value = '';
+        
+        await cargarGastosFijos();
+        alert('✅ Gasto fijo agregado correctamente');
+    };
 
-                if (!nombre) { alert('Ingresa el nombre'); return; }
-                if (!diaCorte || diaCorte < 1 || diaCorte > 31) { alert('Día de corte válido (1-31)'); return; }
-                if (!diaPago || diaPago < 1 || diaPago > 31) { alert('Día de pago válido (1-31)'); return; }
+    // ============ ELIMINAR ============
+    async function eliminarTarjeta(id) {
+        const tarjeta = tarjetas.find(t => t.id === id);
+        if (!confirm(`¿Eliminar la tarjeta "${tarjeta.nombre}"?`)) return;
+        await window.app.eliminarTarjeta(id);
+        await cargarTarjetas();
+        alert('🗑️ Tarjeta eliminada');
+    }
 
-                window.app.guardarTarjeta({ id: editandoId, nombre, diaCorte, diaPago, deudaActual }).then(() => {
-                    cargarTarjetas();
-                    cerrarModal();
-                    alert('✅ Tarjeta actualizada');
-                });
-            } else if (editandoTipo === 'gasto') {
-                guardarEdicionGasto();
+    async function eliminarGastoFijo(id) {
+        const gasto = gastosFijos.find(g => g.id === id);
+        if (!confirm(`¿Eliminar el gasto fijo "${gasto.nombre}"?`)) return;
+        await window.app.eliminarGastoFijo(id);
+        await cargarGastosFijos();
+        alert('🗑️ Gasto fijo eliminado');
+    }
+
+    // ============ EXPORTAR/IMPORTAR ============
+    async function exportarDatos() {
+        const tx = window.app.db.transaction(['presupuesto', 'transacciones', 'patrimonio', 'subcategorias', 'tarjetas', 'gastosFijos'], 'readonly');
+        
+        const presupuesto = await new Promise(resolve => { const req = tx.objectStore('presupuesto').getAll(); req.onsuccess = () => resolve(req.result); });
+        const transacciones = await new Promise(resolve => { const req = tx.objectStore('transacciones').getAll(); req.onsuccess = () => resolve(req.result); });
+        const patrimonio = await new Promise(resolve => { const req = tx.objectStore('patrimonio').getAll(); req.onsuccess = () => resolve(req.result); });
+        const subcategorias = await new Promise(resolve => { const req = tx.objectStore('subcategorias').getAll(); req.onsuccess = () => resolve(req.result); });
+        const tarjetas = await new Promise(resolve => { const req = tx.objectStore('tarjetas').getAll(); req.onsuccess = () => resolve(req.result); });
+        const gastosFijos = await new Promise(resolve => { const req = tx.objectStore('gastosFijos').getAll(); req.onsuccess = () => resolve(req.result); });
+
+        const data = { presupuesto, transacciones, patrimonio, subcategorias, tarjetas, gastosFijos };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `presupuesto_backup_${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    async function importarDatos(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const data = JSON.parse(e.target.result);
+                if (!confirm('⚠️ Esto sobrescribirá todos tus datos actuales. ¿Continuar?')) return;
+
+                const tx = window.app.db.transaction(['presupuesto', 'transacciones', 'patrimonio', 'subcategorias', 'tarjetas', 'gastosFijos'], 'readwrite');
+                tx.objectStore('presupuesto').clear();
+                tx.objectStore('transacciones').clear();
+                tx.objectStore('patrimonio').clear();
+                tx.objectStore('subcategorias').clear();
+                tx.objectStore('tarjetas').clear();
+                tx.objectStore('gastosFijos').clear();
+
+                if (data.presupuesto) data.presupuesto.forEach(item => tx.objectStore('presupuesto').add(item));
+                if (data.transacciones) data.transacciones.forEach(item => tx.objectStore('transacciones').add(item));
+                if (data.patrimonio) data.patrimonio.forEach(item => tx.objectStore('patrimonio').add(item));
+                if (data.subcategorias) data.subcategorias.forEach(item => tx.objectStore('subcategorias').add(item));
+                if (data.tarjetas) data.tarjetas.forEach(item => tx.objectStore('tarjetas').add(item));
+                if (data.gastosFijos) data.gastosFijos.forEach(item => tx.objectStore('gastosFijos').add(item));
+
+                alert('✅ Datos importados correctamente');
+                location.reload();
+            } catch (error) {
+                alert('❌ Error al importar: ' + error.message);
             }
-        }
+        };
+        reader.readAsText(file);
+    }
 
-        // ============ DATOS ============
-        async function exportarDatos() {
-            const tx = window.app.db.transaction(['presupuesto', 'transacciones', 'patrimonio', 'subcategorias', 'tarjetas', 'gastosFijos'], 'readonly');
-            
-            const presupuesto = await new Promise(resolve => {
-                const req = tx.objectStore('presupuesto').getAll();
-                req.onsuccess = () => resolve(req.result);
-            });
-            
-            const transacciones = await new Promise(resolve => {
-                const req = tx.objectStore('transacciones').getAll();
-                req.onsuccess = () => resolve(req.result);
-            });
-            
-            const patrimonio = await new Promise(resolve => {
-                const req = tx.objectStore('patrimonio').getAll();
-                req.onsuccess = () => resolve(req.result);
-            });
+    async function eliminarTodosLosDatos() {
+        if (!confirm('⚠️ ¿Estás SEGURO? Esto eliminará TODOS tus datos. Esta acción no se puede deshacer.')) return;
+        if (!confirm('⚠️ Última advertencia: ¿Realmente quieres eliminar todo?')) return;
 
-            const subcategorias = await new Promise(resolve => {
-                const req = tx.objectStore('subcategorias').getAll();
-                req.onsuccess = () => resolve(req.result);
-            });
+        const tx = window.app.db.transaction(['presupuesto', 'transacciones', 'patrimonio', 'subcategorias', 'tarjetas', 'gastosFijos'], 'readwrite');
+        tx.objectStore('presupuesto').clear();
+        tx.objectStore('transacciones').clear();
+        tx.objectStore('patrimonio').clear();
+        tx.objectStore('subcategorias').clear();
+        tx.objectStore('tarjetas').clear();
+        tx.objectStore('gastosFijos').clear();
 
-            const tarjetas = await new Promise(resolve => {
-                const req = tx.objectStore('tarjetas').getAll();
-                req.onsuccess = () => resolve(req.result);
-            });
-
-            const gastosFijos = await new Promise(resolve => {
-                const req = tx.objectStore('gastosFijos').getAll();
-                req.onsuccess = () => resolve(req.result);
-            });
-
-            const data = { presupuesto, transacciones, patrimonio, subcategorias, tarjetas, gastosFijos };
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `presupuesto_backup_${new Date().toISOString().split('T')[0]}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
-        }
-
-        async function importarDatos(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                try {
-                    const data = JSON.parse(e.target.result);
-                    
-                    if (!confirm('⚠️ Esto sobrescribirá todos tus datos actuales. ¿Continuar?')) return;
-
-                    const tx = window.app.db.transaction(['presupuesto', 'transacciones', 'patrimonio', 'subcategorias', 'tarjetas', 'gastosFijos'], 'readwrite');
-                    
-                    tx.objectStore('presupuesto').clear();
-                    tx.objectStore('transacciones').clear();
-                    tx.objectStore('patrimonio').clear();
-                    tx.objectStore('subcategorias').clear();
-                    tx.objectStore('tarjetas').clear();
-                    tx.objectStore('gastosFijos').clear();
-
-                    if (data.presupuesto) data.presupuesto.forEach(item => tx.objectStore('presupuesto').add(item));
-                    if (data.transacciones) data.transacciones.forEach(item => tx.objectStore('transacciones').add(item));
-                    if (data.patrimonio) data.patrimonio.forEach(item => tx.objectStore('patrimonio').add(item));
-                    if (data.subcategorias) data.subcategorias.forEach(item => tx.objectStore('subcategorias').add(item));
-                    if (data.tarjetas) data.tarjetas.forEach(item => tx.objectStore('tarjetas').add(item));
-                    if (data.gastosFijos) data.gastosFijos.forEach(item => tx.objectStore('gastosFijos').add(item));
-
-                    alert('✅ Datos importados correctamente');
-                    location.reload();
-                } catch (error) {
-                    alert('❌ Error al importar: ' + error.message);
-                }
-            };
-            reader.readAsText(file);
-        }
-
-        async function eliminarTodosLosDatos() {
-            if (!confirm('⚠️ ¿Estás SEGURO? Esto eliminará TODOS tus datos. Esta acción no se puede deshacer.')) return;
-            if (!confirm('⚠️ Última advertencia: ¿Realmente quieres eliminar todo?')) return;
-
-            const tx = window.app.db.transaction(['presupuesto', 'transacciones', 'patrimonio', 'subcategorias', 'tarjetas', 'gastosFijos'], 'readwrite');
-            tx.objectStore('presupuesto').clear();
-            tx.objectStore('transacciones').clear();
-            tx.objectStore('patrimonio').clear();
-            tx.objectStore('subcategorias').clear();
-            tx.objectStore('tarjetas').clear();
-            tx.objectStore('gastosFijos').clear();
-
-            alert('🗑️ Todos los datos han sido eliminados');
-            location.reload();
-        }
-    </script>
-</body>
-</html>
+        alert('🗑️ Todos los datos han sido eliminados');
+        location.reload();
+    }
+</script>
