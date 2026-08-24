@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -84,6 +83,20 @@
             color: #777;
             margin-left: 8px;
         }
+        .tarjeta-tag {
+            font-size: 10px;
+            background: #1565c0;
+            color: white;
+            padding: 1px 6px;
+            border-radius: 8px;
+            margin-left: 4px;
+        }
+        .row-tarjeta {
+            display: none;
+        }
+        .row-tarjeta.visible {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -116,7 +129,7 @@
 
     <!-- Formulario de transacción -->
     <div class="transaction-form">
-        <select id="categoriaSelect" onchange="cargarSubcategorias()">
+        <select id="categoriaSelect" onchange="cargarSubcategorias(); toggleTarjeta()">
             <option value="INGRESOS">💰 Ingresos</option>
             <option value="GASTOS_ESENCIALES">🏠 Gastos Esenciales</option>
             <option value="GASTOS_DISCRECIONALES">🎮 Gastos Discrecionales</option>
@@ -130,6 +143,15 @@
         <input type="date" id="fechaInput">
         <input type="number" id="montoInput" placeholder="Monto" step="0.01">
         <input type="text" id="notasInput" placeholder="Notas (opcional)">
+        
+        <!-- Selector de tarjeta -->
+        <div id="tarjetaContainer" style="margin: 8px 0;">
+            <select id="tarjetaSelect">
+                <option value="">Sin tarjeta</option>
+            </select>
+            <small style="font-size:11px; color:#999;">Asignar este gasto a una tarjeta de crédito</small>
+        </div>
+        
         <button onclick="agregarTransaccion()">➕ Agregar Transacción</button>
     </div>
 
@@ -158,7 +180,7 @@
     </div>
 
     <!-- Resumen -->
-    <div class="summary-grid" style="padding:8px 16px;">
+    <div class="summary-grid" style="padding:8px 16px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
         <div class="summary-box ingresos">
             <small>💰 Ingresos</small>
             <strong id="totalIngresos">$0.00</strong>
@@ -190,6 +212,8 @@
         let anioActual = new Date().getFullYear();
         let transacciones = [];
         let presupuesto = [];
+        let subcategorias = [];
+        let tarjetas = [];
         let semanaSeleccionada = 1;
         let editandoId = null;
 
@@ -202,6 +226,10 @@
             document.getElementById('selectorAnio').value = anioActual;
             
             presupuesto = await window.app.obtenerPresupuesto();
+            subcategorias = await window.app.obtenerSubcategorias();
+            tarjetas = await window.app.obtenerTarjetas();
+            
+            await cargarTarjetasEnSelect();
             await cargarSubcategorias();
             await cargarTransacciones();
             actualizarMesDisplay();
@@ -218,20 +246,43 @@
             });
         });
 
+        async function cargarTarjetasEnSelect() {
+            tarjetas = await window.app.obtenerTarjetas();
+            const select = document.getElementById('tarjetaSelect');
+            select.innerHTML = '<option value="">Sin tarjeta</option>';
+            tarjetas.forEach(t => {
+                const option = document.createElement('option');
+                option.value = t.id;
+                option.textContent = `💳 ${t.nombre}`;
+                select.appendChild(option);
+            });
+        }
+
+        function toggleTarjeta() {
+            const categoria = document.getElementById('categoriaSelect').value;
+            const container = document.getElementById('tarjetaContainer');
+            if (categoria === 'INGRESOS') {
+                container.style.display = 'none';
+            } else {
+                container.style.display = 'block';
+            }
+        }
+
         async function cargarSubcategorias() {
             const categoria = document.getElementById('categoriaSelect').value;
             const select = document.getElementById('subcategoriaSelect');
             select.innerHTML = '<option value="">Seleccionar subcategoría</option>';
             
-            const items = presupuesto.filter(p => p.categoria === categoria);
+            const items = subcategorias.filter(s => s.categoria === categoria);
             items.forEach(item => {
-                if (item.subcategoria) {
+                if (item.nombre) {
                     const option = document.createElement('option');
-                    option.value = item.subcategoria;
-                    option.textContent = item.subcategoria;
+                    option.value = item.nombre;
+                    option.textContent = item.nombre;
                     select.appendChild(option);
                 }
             });
+            toggleTarjeta();
         }
 
         async function cargarSubcategoriasEdit() {
@@ -239,12 +290,12 @@
             const select = document.getElementById('editSubcategoria');
             select.innerHTML = '<option value="">Seleccionar subcategoría</option>';
             
-            const items = presupuesto.filter(p => p.categoria === categoria);
+            const items = subcategorias.filter(s => s.categoria === categoria);
             items.forEach(item => {
-                if (item.subcategoria) {
+                if (item.nombre) {
                     const option = document.createElement('option');
-                    option.value = item.subcategoria;
-                    option.textContent = item.subcategoria;
+                    option.value = item.nombre;
+                    option.textContent = item.nombre;
                     select.appendChild(option);
                 }
             });
@@ -293,9 +344,14 @@
                 const div = document.createElement('div');
                 div.className = 'transaction-item';
                 const esIngreso = t.categoria === 'INGRESOS';
+                let tarjetaNombre = '';
+                if (t.tarjetaId) {
+                    const tarjeta = tarjetas.find(tj => tj.id === t.tarjetaId);
+                    tarjetaNombre = tarjeta ? ` 💳${tarjeta.nombre}` : '';
+                }
                 div.innerHTML = `
                     <div class="info">
-                        <span class="name">${t.subcategoria || t.categoria}</span>
+                        <span class="name">${t.subcategoria || t.categoria}${tarjetaNombre ? `<span class="tarjeta-tag">${tarjetaNombre}</span>` : ''}</span>
                         <span class="category">${t.categoria} • ${t.fecha}</span>
                         ${t.notas ? `<span class="notes">📝 ${t.notas}</span>` : ''}
                     </div>
@@ -353,6 +409,7 @@
             const fecha = document.getElementById('fechaInput').value;
             const monto = parseFloat(document.getElementById('montoInput').value);
             const notas = document.getElementById('notasInput').value;
+            const tarjetaId = parseInt(document.getElementById('tarjetaSelect').value) || null;
             
             if (!monto || monto <= 0) {
                 alert('Por favor ingresa un monto válido');
@@ -371,13 +428,34 @@
                 subcategoria,
                 fecha,
                 monto,
-                notas
+                notas,
+                tarjetaId
             });
             
             document.getElementById('montoInput').value = '';
             document.getElementById('notasInput').value = '';
+            document.getElementById('tarjetaSelect').value = '';
+            
+            // Actualizar deuda de la tarjeta si se asignó
+            if (tarjetaId) {
+                await actualizarDeudaTarjeta(tarjetaId);
+            }
             
             await cargarTransacciones();
+        }
+
+        async function actualizarDeudaTarjeta(tarjetaId) {
+            const deuda = await window.app.calcularDeudaTarjeta(tarjetaId, mesActual, anioActual);
+            const tarjeta = tarjetas.find(t => t.id === tarjetaId);
+            if (tarjeta) {
+                await window.app.guardarTarjeta({
+                    id: tarjetaId,
+                    nombre: tarjeta.nombre,
+                    diaCorte: tarjeta.diaCorte,
+                    diaPago: tarjeta.diaPago,
+                    deudaActual: deuda
+                });
+            }
         }
 
         function editarTransaccion(id) {
@@ -411,7 +489,7 @@
                 return;
             }
             
-            // Eliminar la anterior y crear una nueva (por simplicidad)
+            // Eliminar la anterior y crear una nueva
             await window.app.eliminarTransaccion(id);
             await window.app.guardarTransaccion({
                 mes: mesActual,
@@ -435,7 +513,14 @@
 
         async function eliminarTransaccion(id) {
             if (confirm('¿Eliminar esta transacción?')) {
+                const t = transacciones.find(t => t.id === id);
                 await window.app.eliminarTransaccion(id);
+                
+                // Actualizar deuda de la tarjeta si tenía
+                if (t && t.tarjetaId) {
+                    await actualizarDeudaTarjeta(t.tarjetaId);
+                }
+                
                 await cargarTransacciones();
             }
         }
